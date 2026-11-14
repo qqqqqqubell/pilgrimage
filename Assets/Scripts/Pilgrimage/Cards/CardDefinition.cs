@@ -3,7 +3,16 @@ using System.Collections.Generic;
 
 namespace Pilgrimage
 {
-    public enum CardId { Evangelism, RequestOffering, RegularWorship, Follower }
+    // Existing numeric values are stable for serialized v1 settings.
+    public enum CardId { Evangelism, RequestOffering, RegularWorship, Follower,
+        Heretic, TempleRemodeling, Interest, ClergyTraining, PublicDenunciation,
+        Council, Reaper, AggressiveMission, PoorRelief, SalvationFundraising,
+        CharityPot, HumbleTemple, Tithe, Indulgence, Pope, Inquisitor, Inerrancy,
+        Confession, FaithfulFollower, MoltingRitual, DeepForestSanctuary, WildRoar }
+    public enum CardCategory { General, Follower, Heretic, Faction }
+    public enum FactionId { None, Poverty, Gold, Discipline, Fur }
+    public enum EffectImplementation { Implemented, SpecificationPending, NotImplemented }
+    public enum TargetKind { Self, Player, Card }
 
     // Immutable definitions describe the supplied card rules, not test setup.
     public sealed class CardDefinition
@@ -18,10 +27,26 @@ namespace Pilgrimage
         public int DoctrineChange { get; }
         public int AtheistChange { get; }
         public int FollowersToDeck { get; }
+        public CardCategory Category { get; }
+        public FactionId Faction { get; }
+        public EffectImplementation Implementation { get; }
+        public TargetKind Target { get; }
+        public string Conditions { get; }
+        public string FlavorText { get; }
+        public string EffectKey { get; }
+        public int ChurchPropertyChange { get; }
+        public string CostText { get; }
+        public bool CountsAsFollower { get; }
+        public bool ProtectedFromCardEffects { get; }
 
-        internal CardDefinition(CardId id, string name, string description, int cost,
+        public CardDefinition(CardId id, string name, string description, int cost,
             bool playable, int offeringGain = 0, int faithChange = 0,
-            int doctrineChange = 0, int atheistChange = 0, int followersToDeck = 0)
+            int doctrineChange = 0, int atheistChange = 0, int followersToDeck = 0,
+            CardCategory category = CardCategory.General, FactionId faction = FactionId.None,
+            EffectImplementation implementation = EffectImplementation.Implemented,
+            TargetKind target = TargetKind.Self, string conditions = "헌금 코스트 지불 가능",
+            string flavorText = "미정", string effectKey = "basic", int churchPropertyChange = 0,
+            string costText = null, bool countsAsFollower = false, bool protectedFromCardEffects = false)
         {
             Id = id;
             Name = name;
@@ -33,6 +58,17 @@ namespace Pilgrimage
             DoctrineChange = doctrineChange;
             AtheistChange = atheistChange;
             FollowersToDeck = followersToDeck;
+            Category = category;
+            Faction = faction;
+            Implementation = implementation;
+            Target = target;
+            Conditions = conditions;
+            FlavorText = flavorText;
+            EffectKey = effectKey;
+            ChurchPropertyChange = churchPropertyChange;
+            CostText = costText ?? (cost < 0 ? "미정" : $"헌금 {cost}");
+            CountsAsFollower = countsAsFollower || category == CardCategory.Follower;
+            ProtectedFromCardEffects = protectedFromCardEffects;
         }
     }
 
@@ -40,28 +76,18 @@ namespace Pilgrimage
     public sealed class CardInstance
     {
         public Guid InstanceId { get; } = Guid.NewGuid();
-        public CardDefinition Definition { get; }
+        public CardDefinition Definition { get; private set; }
 
         public CardInstance(CardId id) { Definition = CardCatalog.Get(id); }
+        public CardInstance(CardDefinition definition)
+        { Definition = definition ?? throw new ArgumentNullException(nameof(definition)); }
+        // Conversion preserves the identity of the physical card.
+        internal void Transform(CardDefinition definition) { Definition = definition; }
     }
 
     public static class CardCatalog
     {
-        private static readonly Dictionary<CardId, CardDefinition> Definitions =
-            new Dictionary<CardId, CardDefinition>
-            {
-                { CardId.Evangelism, new CardDefinition(CardId.Evangelism, "포교",
-                    "헌금 -1 / 무신론자 -2 / 신앙심 -2 / 신도 2장을 덱에 추가",
-                    1, true, faithChange: -2, atheistChange: -2, followersToDeck: 2) },
-                { CardId.RequestOffering, new CardDefinition(CardId.RequestOffering, "헌금 요구",
-                    "헌금 -1 후 +2 / 신앙심 -5 / 교리 정합성 -5",
-                    1, true, offeringGain: 2, faithChange: -5, doctrineChange: -5) },
-                { CardId.RegularWorship, new CardDefinition(CardId.RegularWorship, "정기 예배",
-                    "헌금 -1 / 신앙심 +5 / 교리 정합성 +5",
-                    1, true, faithChange: 5, doctrineChange: 5) },
-                { CardId.Follower, new CardDefinition(CardId.Follower, "[신도]",
-                    "사용할 수 없는 카드입니다.", 0, false) }
-            };
+        private static readonly Dictionary<CardId, CardDefinition> Definitions = CardCatalogData.Create();
 
         public static CardDefinition Get(CardId id)
         {
@@ -69,5 +95,6 @@ namespace Pilgrimage
                 throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown card.");
             return definition;
         }
+        public static IReadOnlyCollection<CardDefinition> All => Definitions.Values;
     }
 }

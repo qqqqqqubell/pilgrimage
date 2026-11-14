@@ -1,0 +1,5 @@
+{
+  "name": "Pilgrimage.PlayModeTests",
+  "references": ["Pilgrimage.Runtime", "Pilgrimage.UI", "Unity.TextMeshPro", "UnityEngine.UI", "Unity.InputSystem"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}

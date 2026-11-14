@@ -54,6 +54,9 @@ namespace Pilgrimage
             if (playerIndex != ActivePlayerIndex) { reason = "현재 플레이어의 턴이 아닙니다."; return false; }
             if (card == null || !ActivePlayer.MutableHand.Contains(card))
             { reason = "손패에 없는 카드입니다."; return false; }
+            if (card.Definition.Id != CardId.Evangelism && card.Definition.Id != CardId.RequestOffering &&
+                card.Definition.Id != CardId.RegularWorship && card.Definition.Id != CardId.Follower)
+            { reason = "확장 카드는 v2 데모에서 테스트하세요."; return false; }
             if (!card.Definition.IsPlayable) { reason = "[신도]는 사용할 수 없습니다."; return false; }
             if (maxCards > 0 && CardsPlayedThisTurn >= maxCards)
             { reason = "임시 턴당 사용 제한에 도달했습니다."; return false; }
@@ -73,12 +76,7 @@ namespace Pilgrimage
             int previousFaith = player.Faith;
             int previousDoctrine = player.Doctrine;
             int previousAtheists = Atheists;
-            player.Offering = Apply(player.Offering - effect.Cost + effect.OfferingGain);
-            player.Faith = Apply(player.Faith + effect.FaithChange);
-            player.Doctrine = Apply(player.Doctrine + effect.DoctrineChange);
-            Atheists = Apply(Atheists + effect.AtheistChange);
-            for (int i = 0; i < effect.FollowersToDeck; i++)
-                player.MutableDeck.Add(new CardInstance(CardId.Follower));
+            Atheists = CardEffectResolver.ApplyBasic(player, effect, Atheists, clampAtZero, false);
             player.MutableHand.Remove(card);
             player.MutableDiscard.Add(card);
             CardsPlayedThisTurn++;
@@ -123,8 +121,6 @@ namespace Pilgrimage
             }
             return drawn;
         }
-
-        private int Apply(int value) => clampAtZero ? Math.Max(0, value) : value;
 
         private static void AddCopies(List<CardInstance> destination, CardId[] ids)
         {

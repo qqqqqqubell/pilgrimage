@@ -1,5 +1,5 @@
 {
   "name": "Pilgrimage.Editor",
-  "references": ["Pilgrimage.Runtime"],
+  "references": ["Pilgrimage.Runtime", "Pilgrimage.UI"],
   "includePlatforms": ["Editor"]
 }

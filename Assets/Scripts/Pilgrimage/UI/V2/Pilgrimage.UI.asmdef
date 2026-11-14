@@ -1,0 +1,5 @@
+{
+  "name": "Pilgrimage.UI",
+  "references": ["Pilgrimage.Runtime", "UnityEngine.UI", "Unity.TextMeshPro", "Unity.InputSystem"],
+  "rootNamespace": "Pilgrimage.UI"
+}
