@@ -158,13 +158,14 @@ namespace Pilgrimage.Tests
             Assert.That(turn.Next(game), Is.Null);
         }
 
-        [Test] public void AiSkipsPassiveUnimplementedUnaffordableAndConditionalCards()
+        [Test] public void AiSkipsPassiveUnaffordableAndConditionalCards()
         {
             var game = Create();
-            foreach (var id in new[] { CardId.Archbishop, CardId.Penance, CardId.FaithfulFollower, CardId.WildRoar, CardId.GlimmerOfHope, CardId.Paradise }) Give(game, id);
+            foreach (var id in new[] { CardId.FaithfulFollower, CardId.WildRoar, CardId.GlimmerOfHope, CardId.Paradise }) Give(game, id);
 
             Assert.That(new RuleBasedAi(Config()).Choose(new AiObservation(game, 0)), Is.Null);
             GameDebugTools.SetResources(game, 0, 0, 50, 50);
+            Give(game, CardId.Archbishop); Give(game, CardId.Penance);
             var worship = Give(game, CardId.RegularWorship);
             var decision = new RuleBasedAi(Config()).Choose(new AiObservation(game, 0));
             Assert.That(decision.Definition.Id, Is.EqualTo(CardId.GlimmerOfHope));
@@ -221,14 +222,111 @@ namespace Pilgrimage.Tests
             Assert.That(after.Target.PlayerIndex, Is.EqualTo(before.Target.PlayerIndex));
         }
 
-        [Test] public void HiddenTargetFailureSkipsCardInsteadOfProbingEveryOpponent()
+        [Test] public void InvalidTargetsAreAllCheckedAndNoActionIsRepeatedOrCharged()
         {
             var game = Create(); var stolen = Give(game, CardId.AggressiveMission);
             var config = Config(); var turn = new AiTurn(game, 0, new RuleBasedAi(config), config);
             Assert.That(turn.Next(game), Is.Null); // opponents' decks contain no eligible followers
-            Assert.That(turn.Attempts, Is.EqualTo(1));
+            Assert.That(turn.Attempts, Is.Zero);
+            Assert.That(turn.LegalityChecks, Is.EqualTo(3));
             Assert.That(game.FindCard(stolen.InstanceId).Pile, Is.EqualTo(CardPile.Hand));
             Assert.That(game.Players[0].Offering, Is.EqualTo(5));
+        }
+
+        [Test] public void AllEightReportedCardsAreEvaluatedIncludingUnprofitableActions()
+        {
+            foreach (var id in new[] { CardId.ClergyTraining, CardId.Preaching, CardId.BondOfFaith, CardId.Council,
+                CardId.Reaper, CardId.PublicDenunciation, CardId.Blessing, CardId.MoltingRitual })
+            {
+                var game = Create(); var source = Give(game, id);
+                for (int owner = 0; owner < 4; owner++)
+                    for (int n = 0; n < 2; n++) Give(game, CardId.Follower, owner, CardPile.Deck);
+                GameDebugTools.SetResources(game, 0, 50, 20, 20);
+                var config = Config(); var ai = new RuleBasedAi(config);
+                var evaluated = ai.EvaluateActions(new AiObservation(game, 0));
+                Assert.That(evaluated.Any(c => c.CardInstanceId == source.InstanceId), Is.True, id.ToString());
+                Assert.That(evaluated.All(c => game.CanPlay(0, c.CardInstanceId, out _, c.Target)), Is.True);
+                if (id == CardId.ClergyTraining || id == CardId.Reaper || id == CardId.PublicDenunciation || id == CardId.Blessing || id == CardId.MoltingRitual)
+                {
+                    Assert.That(evaluated.All(c => c.Score < 0), Is.True, "Default negative scores must remain negative: " + id);
+                    Assert.That(ai.Choose(new AiObservation(game, 0)), Is.Null);
+                }
+                // A strategy profile, not a hardcoded positive-score floor, can value these effects.
+                config.factions = new FactionAiProfile[0];
+                config.defaultWeights = new AiWeights { faith = 5, doctrine = 5, futureCards = 10, disruption = 10,
+                    factionAbility = 10, offering = 0, cost = 0 };
+                var identities = new HashSet<Guid>(); AssertCardConservation(game, identities);
+                var turn = new AiTurn(game, 0, ai, config);
+                var decision = turn.Next(game);
+                Assert.That(decision, Is.Not.Null, id.ToString());
+                Assert.That(decision.CardInstanceId, Is.EqualTo(source.InstanceId));
+                Assert.That(game.TryPlay(0, decision.CardInstanceId, out _, decision.Target), Is.True);
+                AssertCardConservation(game, identities);
+                Assert.That(turn.Next(game), Is.Null); // One source can never be submitted twice.
+            }
+        }
+
+        [Test] public void InvalidPreferredTargetDoesNotHideOtherLegalTargetOrSpendActionLimit()
+        {
+            var game = Create(); var mission = Give(game, CardId.AggressiveMission);
+            var target = Give(game, CardId.Follower, 2, CardPile.Deck);
+            GameDebugTools.SetResources(game, 1, 5, 20, 50); // Preferred cost 1, but no eligible deck follower.
+            var config = Config(); config.actionSafetyLimit = 1;
+            var turn = new AiTurn(game, 0, new RuleBasedAi(config), config);
+            var decision = turn.Next(game);
+            Assert.That(decision, Is.Not.Null); Assert.That(decision.Target.PlayerIndex, Is.EqualTo(2));
+            Assert.That(turn.LegalityChecks, Is.EqualTo(3)); Assert.That(turn.Attempts, Is.EqualTo(1));
+            Assert.That(game.TryPlay(0, mission.InstanceId, out _, decision.Target), Is.True);
+            Assert.That(game.FindCard(target.InstanceId).Owner, Is.Zero);
+            Assert.That(turn.Next(game), Is.Null);
+        }
+
+        [Test] public void SubmittedActionThatFailsAfterStateChangeIsNotRetried()
+        {
+            var game = Create(); var evangelism = Give(game, CardId.Evangelism);
+            var charity = Give(game, CardId.CharityPot);
+            var config = Config(); var turn = new AiTurn(game, 0, new RuleBasedAi(config), config);
+            var first = turn.Next(game); Assert.That(first.CardInstanceId, Is.EqualTo(evangelism.InstanceId));
+            GameDebugTools.SetResources(game, 0, 0, 50, 50);
+            Assert.That(game.TryPlay(0, first.CardInstanceId, out _, first.Target), Is.False);
+            var next = turn.Next(game); Assert.That(next.CardInstanceId, Is.EqualTo(charity.InstanceId));
+            Assert.That(game.TryPlay(0, next.CardInstanceId, out _, next.Target), Is.True);
+            Assert.That(turn.Next(game), Is.Null);
+            Assert.That(game.FindCard(evangelism.InstanceId).Pile, Is.EqualTo(CardPile.Hand));
+        }
+
+        [Test] public void AiUsesSessionPoliciesForShortageAndSelfTargetInsteadOfHardcodedRestrictions()
+        {
+            var game = new GameSession(new DemoRuleAssumptions { shuffleInitialDeck = false,
+                requireFullFollowerTargets = false, rejectWhenAtheistsInsufficient = false, allowSelfAsOpponentTarget = true });
+            foreach (var id in new[] { CardId.Indulgence, CardId.MoltingRitual, CardId.BondOfFaith, CardId.Blessing, CardId.Evangelism, CardId.WildRoar }) Give(game, id);
+            GameDebugTools.SetResources(game, 0, 100, 70, 50);
+            // Drain the pool through real, shared effects rather than a separate AI-only state.
+            for (int i = 0; i < 50; i++) Assert.That(game.TryPlay(0, Give(game, CardId.Evangelism).InstanceId, out _), Is.True);
+            // Own deck now has followers; an additional empty-deck session checks the shortage toggle below.
+            var actions = new RuleBasedAi(Config()).EvaluateActions(new AiObservation(game, 0));
+            Assert.That(actions.Any(c => c.Definition.Id == CardId.Evangelism), Is.True);
+            Assert.That(actions.Any(c => c.Definition.Id == CardId.BondOfFaith && c.Target.PlayerIndex == 0), Is.True);
+            GameDebugTools.SetResources(game, 0, 50, 70, 50);
+            Assert.That(new RuleBasedAi(Config()).EvaluateActions(new AiObservation(game, 0)).Any(c => c.Definition.Id == CardId.WildRoar), Is.True);
+            var empty = new GameSession(new DemoRuleAssumptions { shuffleInitialDeck = false, requireFullFollowerTargets = false });
+            foreach (var id in new[] { CardId.Indulgence, CardId.MoltingRitual, CardId.BondOfFaith, CardId.Blessing }) Give(empty, id);
+            var emptyActions = new RuleBasedAi(Config()).EvaluateActions(new AiObservation(empty, 0));
+            Assert.That(emptyActions.Select(c => c.Definition.Id).Distinct().Count(), Is.EqualTo(4));
+            Assert.That(emptyActions.All(c => empty.CanPlay(0, c.CardInstanceId, out _, c.Target)), Is.True);
+        }
+
+        [Test] public void SelfTargetPolicyDoesNotScoreHarmToOwnFollowersAsOpponentDisruption()
+        {
+            var game = new GameSession(new DemoRuleAssumptions { shuffleInitialDeck = false, allowSelfAsOpponentTarget = true });
+            GameDebugTools.SetResources(game, 0, 50, 50, 50);
+            Give(game, CardId.Follower, 0, CardPile.Deck); Give(game, CardId.Follower, 0, CardPile.Deck);
+            foreach (var id in new[] { CardId.PublicDenunciation, CardId.Reaper, CardId.AggressiveMission, CardId.PoorRelief, CardId.FalseRevelation }) Give(game, id);
+            var actions = new RuleBasedAi(Config()).EvaluateActions(new AiObservation(game, 0));
+            var own = actions.Where(c => c.Target.PlayerIndex == 0).ToArray();
+            Assert.That(own.Length, Is.EqualTo(5));
+            Assert.That(own.All(c => c.Score < 0), Is.True);
+            Assert.That(own.All(c => game.CanPlay(0, c.CardInstanceId, out _, c.Target)), Is.True);
         }
 
         [Test] public void FullFortyRoundAiSimulationFinishesWithLegalBoundedActions()

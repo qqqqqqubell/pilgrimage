@@ -21,6 +21,8 @@ namespace Pilgrimage.UI
         private readonly List<CardId> labFive = new List<CardId>();
         private int labPlayer = 1;
         private Guid? pendingRemovalSource;
+        private readonly HashSet<Guid> pendingCardTargets = new HashSet<Guid>();
+        private TMP_Text pickerTitle;
 
         private void BuildCardLabUI()
         {
@@ -59,19 +61,20 @@ namespace Pilgrimage.UI
             }
             // This choice UI is also available in normal/release games.
             cardPicker = Panel(root, "Edict Removal Selection", Vector2.zero, Vector2.zero, new Color(0.015f, 0.035f, 0.055f, 0.98f)); Stretch(cardPicker);
-            Text(cardPicker, "Picker Title", "포고령 · 자신의 손패 또는 덱에서 제거할 카드 선택", new Vector2(0, 405), new Vector2(1500, 65), 30);
+            pickerTitle = Text(cardPicker, "Picker Title", "", new Vector2(0, 405), new Vector2(1500, 65), 30);
             CreateScroll(cardPicker, "Removal Candidates", Vector2.zero, new Vector2(1400, 660), out pickerContent);
-            Button(cardPicker, "취소 · ESC", new Vector2(0, -405), new Vector2(340, 50), CloseCardPicker);
+            Button(cardPicker, "선택 확정", new Vector2(-220, -405), new Vector2(340, 50), ConfirmCardTargets);
+            Button(cardPicker, "취소 · ESC", new Vector2(220, -405), new Vector2(340, 50), CloseCardPicker);
             cardPicker.gameObject.SetActive(false);
         }
 
         public void EnterCardLab()
         {
-            if (!DevelopmentToolsAvailable || IsAnimating || IsAiRunning || IsCardPickerOpen) return;
+            if (Game == null || IsFactionSelectionOpen || !DevelopmentToolsAvailable || IsAnimating || IsAiRunning || IsCardPickerOpen) return;
             CloseDetail();
             if (IsCardLab) return;
             savedRegularGame = Game; savedRegularLogs = logs.ToArray();
-            Game = GameDebugTools.CreateCardLab(); IsCardLab = true;
+            Game = GameDebugTools.CreateCardLab(savedRegularGame.HumanFaction); IsCardLab = true;
             SelectedCardId = null; logs.Clear(); messageText.text = "개발용 실험 세션";
             revealedCard.gameObject.SetActive(false); RevealedCardInstanceId = null; RevealedAiCard = null;
             labBadge.gameObject.SetActive(true); Refresh();
@@ -174,24 +177,41 @@ namespace Pilgrimage.UI
 
         private void OpenRemovalPicker(Guid source)
         {
-            if (Game.Players[0].Offering < CardCatalog.Get(CardId.Edict).Cost) { Feedback("헌금이 부족합니다."); return; }
-            pendingRemovalSource = source; ClearChildren(pickerContent);
-            var candidates = Game.Players[0].Hand.Concat(Game.Players[0].Deck).Where(c => c.InstanceId != source && !c.Definition.ProtectedFromCardEffects).ToArray();
+            var sourceCard = Game.FindCard(source).Card;
+            if (Game.Players[0].Offering < Game.EffectiveCost(0, sourceCard)) { Feedback("헌금이 부족합니다."); return; }
+            pendingRemovalSource = source; pendingCardTargets.Clear(); ClearChildren(pickerContent);
+            pickerTitle.text = sourceCard.Definition.Name + (sourceCard.Definition.Id == CardId.Edict ? " · 손패·덱·버린 더미에서 최대 2장 선택" : " · 신도 1장 선택");
+            var candidates = Game.SelectableCards(0, sourceCard.Definition.Id, source).ToArray();
             pickerContent.sizeDelta = new Vector2(1400, Mathf.Max(660, candidates.Length * 70));
             for (int i = 0; i < candidates.Length; i++)
             {
                 CardInstance candidate = candidates[i]; var located = Game.FindCard(candidate.InstanceId);
-                Button choice = Button(pickerContent, candidate.Definition.Name + " · " + (located.Pile == CardPile.Hand ? "손패" : "덱") + " · " + candidate.InstanceId.ToString("N").Substring(0, 8),
-                    new Vector2(0, -35 - i * 70), new Vector2(1300, 60), () => ChooseRemovalTarget(candidate.InstanceId));
+                Button choice = null;
+                choice = Button(pickerContent, candidate.Definition.Name + " · " + located.Pile + " · " + candidate.InstanceId.ToString("N").Substring(0, 8),
+                    new Vector2(0, -35 - i * 70), new Vector2(1300, 60), () => {
+                        ToggleCardTarget(candidate.InstanceId);
+                        choice.GetComponent<Image>().color = pendingCardTargets.Contains(candidate.InstanceId) ? new Color(0.2f, 0.5f, 0.38f) : new Color(0.13f, 0.3f, 0.31f);
+                    });
                 AnchorTop((RectTransform)choice.transform);
             }
             cardPicker.gameObject.SetActive(true); cardPicker.SetAsLastSibling();
         }
         public void ChooseRemovalTarget(Guid target)
         {
+            pendingCardTargets.Clear(); pendingCardTargets.Add(target); ConfirmCardTargets();
+        }
+        public void ToggleCardTarget(Guid target)
+        {
+            if (!IsCardPickerOpen || !pendingRemovalSource.HasValue || IsAnimating || IsAiRunning) return;
+            if (pendingCardTargets.Remove(target)) return;
+            int limit = Game.FindCard(pendingRemovalSource.Value).Card.Definition.Id == CardId.Edict ? 2 : 1;
+            if (pendingCardTargets.Count < limit) pendingCardTargets.Add(target);
+        }
+        public void ConfirmCardTargets()
+        {
             if (!IsCardPickerOpen || !pendingRemovalSource.HasValue || IsAnimating || IsAiRunning) return;
             Guid source = pendingRemovalSource.Value;
-            var selection = new EffectTarget { PlayerIndex = 0, CardInstanceId = target };
+            var selection = new EffectTarget { PlayerIndex = 0, CardInstanceIds = pendingCardTargets.ToArray() };
             if (!Game.CanPlay(0, source, out string reason, selection)) { Feedback(reason); return; }
             CloseCardPicker(); ExecutePlayerCard(source, selection);
         }

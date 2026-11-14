@@ -16,7 +16,7 @@ using UnityEngine.SceneManagement;
 
 namespace Pilgrimage.Tests
 {
-    public sealed class DemoInteractionTests
+    public sealed partial class DemoInteractionTests
     {
         private DemoController demo;
         private Keyboard keyboard;
@@ -36,6 +36,8 @@ namespace Pilgrimage.Tests
 #endif
             keyboard = InputSystem.AddDevice<Keyboard>();
             demo = new GameObject("Demo Under Test").AddComponent<DemoController>();
+            yield return null;
+            Assert.That(demo.ChooseFaction(FactionId.Poverty), Is.True);
             yield return null;
         }
         [UnityTearDown] public IEnumerator Cleanup()
@@ -116,6 +118,26 @@ namespace Pilgrimage.Tests
             Assert.That(demo.IsAnimating, Is.False);
             Assert.That(demo.HandViews.Count, Is.EqualTo(hand - 1));
             Assert.That(demo.Game.Players[0].Hand.Concat(demo.Game.Players[0].Deck).Concat(demo.Game.Players[0].Discard).Count(c => c.InstanceId == demo.RevealedCardInstanceId), Is.EqualTo(1));
+        }
+
+        [UnityTest] public IEnumerator IndulgenceFromLabHandConvertsFollowersAndRefreshesUiOnce()
+        {
+            demo.EnterCardLab(); demo.SetLabHand(new[] { CardId.Indulgence });
+            var game = demo.Game; var player = game.Players[0]; var source = player.Hand.Single();
+            var followers = player.Deck.Where(c => c.Definition.Id == CardId.Follower).Take(2).ToArray();
+            int before = player.FollowerCount, total = player.TotalCardCount;
+            var view = demo.HandViews.Single();
+            var click = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Left, clickCount = 2 };
+            ExecuteEvents.Execute(view.gameObject, click, ExecuteEvents.pointerClickHandler);
+            Assert.That(demo.IsAnimating, Is.True); demo.PlaySelected();
+            Assert.That(player.Offering, Is.EqualTo(26)); Assert.That(player.ChurchProperty, Is.EqualTo(6));
+            Assert.That(player.Faith, Is.EqualTo(40)); Assert.That(player.Doctrine, Is.EqualTo(40));
+            Assert.That(player.FollowerCount, Is.EqualTo(before - 2)); Assert.That(player.TotalCardCount, Is.EqualTo(total));
+            Assert.That(followers.All(c => c.Definition.Id == CardId.Heretic && game.FindCard(c.InstanceId).Card == c), Is.True);
+            Assert.That(game.FindCard(source.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
+            yield return new WaitForSecondsRealtime(0.4f);
+            Assert.That(demo.IsAnimating, Is.False); Assert.That(demo.HandViews, Is.Empty);
+            Assert.That(demo.CanInteract, Is.True); demo.ExitCardLab();
         }
 
         [UnityTest] public IEnumerator UnusableAndInsufficientCardsDoNotAnimateOrConsumeState()
@@ -267,6 +289,96 @@ namespace Pilgrimage.Tests
             Assert.That(demo.Game.Players[1].FollowerCount, Is.GreaterThanOrEqualTo(9));
         }
 
+        [UnityTest] public IEnumerator LabExitResumesPendingAiAndLabResetPreservesRegularGame()
+        {
+            demo.AiConfiguration.autoPlay = false;
+            demo.AiConfiguration.revealInterval = 0.1f; demo.AiConfiguration.travelDuration = 0.05f;
+            demo.AiConfiguration.actionSafetyLimit = 2;
+            var regular = demo.Game;
+            regular.EndActionTurn(0);
+            var ids = regular.Players.SelectMany(p => p.Hand.Concat(p.Deck).Concat(p.Discard)).Select(c => c.InstanceId).ToArray();
+            demo.EnterCardLab(); demo.SendMessage("ResetGame"); demo.CloseLabPanel();
+            demo.AiConfiguration.autoPlay = true;
+            yield return null;
+            Assert.That(demo.IsCardLab, Is.True); Assert.That(demo.IsAiRunning, Is.False);
+            Assert.That(regular.ActivePlayerIndex, Is.EqualTo(1));
+            Assert.That(regular.Players.SelectMany(p => p.Hand.Concat(p.Deck).Concat(p.Discard)).Select(c => c.InstanceId), Is.EquivalentTo(ids));
+            demo.ExitCardLab();
+            Assert.That(demo.Game, Is.SameAs(regular));
+            float deadline = Time.realtimeSinceStartup + 30;
+            while ((regular.Round < 2 || regular.ActivePlayerIndex != 0 || demo.IsAiRunning) && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(regular.Round, Is.EqualTo(2)); Assert.That(regular.ActivePlayerIndex, Is.Zero);
+            Assert.That(demo.IsAiRunning || demo.IsAnimating || demo.IsCardLab, Is.False);
+        }
+
+        [UnityTest] public IEnumerator AiPlayFailureDuringRevealFinishesWithoutRepeatingOrCharging()
+        {
+            demo.AiConfiguration.autoPlay = false;
+            demo.AiConfiguration.revealInterval = 0.1f; demo.AiConfiguration.travelDuration = 0.2f;
+            GameDebugTools.ReplaceHand(demo.Game, 1, Enumerable.Repeat(CardId.Follower, 5));
+            var source = GameDebugTools.GiveCard(demo.Game, 1, CardId.Evangelism);
+            GameDebugTools.SetResources(demo.Game, 1, 5, 50, 50);
+            demo.Game.EndActionTurn(0); demo.DebugOpponentStep();
+            Assert.That(demo.IsAiRunning, Is.True);
+            Assert.That(demo.RevealedCardInstanceId, Is.EqualTo(source.InstanceId));
+            demo.EnterCardLab(); Assert.That(demo.IsCardLab, Is.False); // Cannot swap sessions mid-animation.
+            GameDebugTools.SetResources(demo.Game, 1, 0, 50, 50); // Invalidate after selection, before execution.
+            float deadline = Time.realtimeSinceStartup + 30;
+            while (demo.IsAiRunning && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(demo.IsAiRunning, Is.False); Assert.That(demo.Game.ActivePlayerIndex, Is.EqualTo(2));
+            Assert.That(demo.Game.FindCard(source.InstanceId).Pile, Is.EqualTo(CardPile.Hand));
+            Assert.That(demo.Game.Players[1].Offering, Is.Zero); Assert.That(demo.Game.Atheists, Is.EqualTo(100));
+            Assert.That(demo.Game.Players[1].Faith, Is.EqualTo(50)); Assert.That(demo.CanInteract, Is.True);
+        }
+
+        [UnityTest] public IEnumerator AiInterruptedRevealCanResumeAndApplyCardExactlyOnce()
+        {
+            demo.AiConfiguration.autoPlay = false;
+            demo.AiConfiguration.revealInterval = 0.1f; demo.AiConfiguration.travelDuration = 0.2f;
+            GameDebugTools.ReplaceHand(demo.Game, 1, Enumerable.Repeat(CardId.Follower, 5));
+            var source = GameDebugTools.GiveCard(demo.Game, 1, CardId.Evangelism);
+            GameDebugTools.SetResources(demo.Game, 1, 5, 50, 50);
+            int followers = demo.Game.Players[1].FollowerCount;
+            demo.Game.EndActionTurn(0); demo.DebugOpponentStep();
+            Assert.That(demo.IsAiRunning, Is.True);
+            demo.enabled = false; // OnDisable stops the coroutine before effects are committed.
+            Assert.That(demo.IsAiRunning || demo.IsAnimating, Is.False);
+            Assert.That(demo.Game.FindCard(source.InstanceId).Pile, Is.EqualTo(CardPile.Hand));
+            demo.enabled = true; demo.DebugOpponentStep();
+            float deadline = Time.realtimeSinceStartup + 30;
+            while (demo.IsAiRunning && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(demo.IsAiRunning, Is.False); Assert.That(demo.Game.ActivePlayerIndex, Is.EqualTo(2));
+            Assert.That(demo.Game.Players[1].Offering, Is.EqualTo(4));
+            Assert.That(demo.Game.Players[1].FollowerCount, Is.EqualTo(followers + 2));
+            Assert.That(demo.Game.Players[1].Discard.Count(c => c.InstanceId == source.InstanceId), Is.EqualTo(1));
+            Assert.That(demo.Game.Atheists, Is.EqualTo(98));
+        }
+
+        [UnityTest] public IEnumerator AiChecksOtherTargetsAndEndsNormallyWithOnlyPassiveCardsLeft()
+        {
+            demo.AiConfiguration.autoPlay = false;
+            demo.AiConfiguration.revealInterval = 0.1f; demo.AiConfiguration.travelDuration = 0.05f;
+            GameDebugTools.ReplaceHand(demo.Game, 1, Enumerable.Repeat(CardId.Follower, 5));
+            var mission = GameDebugTools.GiveCard(demo.Game, 1, CardId.AggressiveMission);
+            // Make only player 3 a valid target, independent of initial shuffle.
+            GameDebugTools.SetResources(demo.Game, 0, 100, 50, 50);
+            foreach (int owner in new[] { 0, 2, 3 })
+                foreach (var card in demo.Game.Players[owner].Deck.Where(c => c.Definition.Id == CardId.Follower).ToArray())
+                {
+                    var removal = GameDebugTools.GiveCard(demo.Game, 0, owner == 0 ? CardId.Edict : CardId.PublicDenunciation);
+                    Assert.That(demo.Game.TryPlay(0, removal.InstanceId, out _, new EffectTarget { PlayerIndex = owner, CardInstanceId = card.InstanceId }), Is.True);
+                }
+            var victim = GameDebugTools.GiveCard(demo.Game, 3, CardId.Follower, CardPile.Deck);
+            GameDebugTools.SetResources(demo.Game, 1, 10, 50, 50);
+            demo.Game.EndActionTurn(0); demo.DebugOpponentStep();
+            float deadline = Time.realtimeSinceStartup + 30;
+            while (demo.IsAiRunning && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(demo.IsAiRunning, Is.False); Assert.That(demo.Game.ActivePlayerIndex, Is.EqualTo(2));
+            Assert.That(demo.Game.FindCard(mission.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
+            Assert.That(demo.Game.FindCard(victim.InstanceId).Owner, Is.EqualTo(1));
+            Assert.That(demo.Game.Players[1].Hand.All(c => c.Definition.Id == CardId.Follower), Is.True);
+        }
+
         [UnityTest] public IEnumerator AutomaticOpponentsReturnControlToHumanWithoutButtons()
         {
             demo.AiConfiguration.revealInterval = 0.1f; demo.AiConfiguration.travelDuration = 0.05f;
@@ -304,6 +416,8 @@ namespace Pilgrimage.Tests
             yield return null; // Scene integration completes on the next player-loop update.
             demo = loadedDemoScene.GetRootGameObjects().SelectMany(o => o.GetComponentsInChildren<DemoController>()).Single();
             yield return null;
+            Assert.That(demo.IsFactionSelectionOpen, Is.True); Assert.That(demo.Game, Is.Null);
+            Assert.That(demo.ChooseFaction(FactionId.Poverty), Is.True);
             Assert.That(demo.Game.Players.Count, Is.EqualTo(4));
             Assert.That(demo.HandViews.Count, Is.EqualTo(5));
             for (int i = 0; i < 5; i++) yield return null;

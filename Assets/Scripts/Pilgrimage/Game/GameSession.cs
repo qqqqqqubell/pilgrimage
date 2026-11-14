@@ -12,7 +12,7 @@ namespace Pilgrimage
     public sealed class DemoRuleAssumptions
     {
         // Only unresolved rules live here. Confirmed numbers live in GameSession.
-        public int startingOffering = 0;
+        public int startingOffering = 5; // Retained for old assets; final regular games use StartingOffering.
         public int startingChurchProperty = 0;
         public int randomSeed = 20261114;
         public bool shuffleInitialDeck = true;
@@ -22,6 +22,7 @@ namespace Pilgrimage
         public bool rejectWhenAtheistsInsufficient = true;
         public bool requireFullFollowerTargets = true;
         public bool allowSelfAsOpponentTarget = false;
+        public TimedEffectPolicy timedEffects = new TimedEffectPolicy();
     }
 
     public sealed class DeferredReward
@@ -46,6 +47,8 @@ namespace Pilgrimage
     {
         public int PlayerIndex;
         public Guid CardInstanceId;
+        public Guid[] CardInstanceIds;
+        public Guid[] Cards => CardInstanceIds ?? (CardInstanceId == Guid.Empty ? Array.Empty<Guid>() : new[] { CardInstanceId });
     }
 
     // Complex effects can validate targets before mutation and execute through this context.
@@ -73,9 +76,9 @@ namespace Pilgrimage
         { Game.Players[player].MutableStatuses.Add(new OngoingEffect(protection, ownerTurns)); }
     }
 
-    public sealed class GameSession
+    public sealed partial class GameSession
     {
-        public const int PlayerCount = 4, TotalRounds = 40, RoundOffering = 5, RoundDraw = 5;
+        public const int PlayerCount = 4, TotalRounds = 40, StartingOffering = 5, RoundOffering = 3, RoundDraw = 4;
         public static readonly string[] FactionNames = {
             "청빈의 사도단", "순금의 형제단", "절대 교율 교단", "숲의 털가죽 교단"
         };
@@ -84,13 +87,16 @@ namespace Pilgrimage
         private readonly List<DeferredReward> deferred = new List<DeferredReward>();
         private readonly Dictionary<string, ICardEffectHandler> handlers;
         private readonly Random random;
+        private readonly Random effectRandom;
+        public TimedEffectPolicy EffectPolicy { get; }
+        public FactionId HumanFaction => players[0].Faction;
         private readonly bool accumulate, requireAtheists;
         public bool RequireFullFollowerTargets { get; }
         public bool AllowSelfAsOpponentTarget { get; }
-        public bool RequiresAtheists => requireAtheists;
+        public bool RequiresAtheists => true; // Final population rules require sufficient people for creation.
         private readonly int maxCards;
         private readonly CardPile rewardDestination;
-        private int actionOffset, rewardOffset;
+        private int actionOffset;
         public IReadOnlyList<PlayerState> Players { get; }
         public IReadOnlyList<CardDefinition> Catalog { get; }
         public IReadOnlyList<DeferredReward> DeferredRewards { get; }
@@ -98,7 +104,7 @@ namespace Pilgrimage
         public int Round { get; private set; } = 1;
         public int FirstPlayerIndex => (Round - 1) % PlayerCount;
         public int ActivePlayerIndex => (FirstPlayerIndex + actionOffset) % PlayerCount;
-        public int RewardPlayerIndex => (FirstPlayerIndex + rewardOffset) % PlayerCount;
+        public int RewardPlayerIndex => 0; // All four rewards are already awarded; human acknowledges the results.
         public RewardKind CurrentRewardKind => Round % 8 == 0 ? RewardKind.Faction : RewardKind.General;
         public int Atheists { get; private set; } = 100;
         public int CardsPlayedThisTurn { get; private set; }
@@ -106,10 +112,15 @@ namespace Pilgrimage
 
         public GameSession(DemoRuleAssumptions assumptions = null,
             IEnumerable<CardDefinition> additionalCards = null,
-            IDictionary<string, ICardEffectHandler> additionalHandlers = null)
+            IDictionary<string, ICardEffectHandler> additionalHandlers = null,
+            FactionId humanFaction = FactionId.Poverty)
         {
             var rules = assumptions ?? new DemoRuleAssumptions();
             random = new Random(rules.randomSeed);
+            effectRandom = new Random(rules.randomSeed ^ 0x51A7);
+            rewardRandom = new Random(rules.randomSeed ^ 0x7E19);
+            EffectPolicy = (rules.timedEffects ?? new TimedEffectPolicy()).Copy();
+            var seats = FactionSetup.Seats(humanFaction);
             accumulate = rules.accumulateOfferingBetweenRounds;
             requireAtheists = rules.rejectWhenAtheistsInsufficient;
             RequireFullFollowerTargets = rules.requireFullFollowerTargets;
@@ -135,12 +146,12 @@ namespace Pilgrimage
                 }
             for (int i = 0; i < PlayerCount; i++)
             {
-                var player = new PlayerState(FactionNames[i], Math.Max(0, rules.startingOffering), 50, 50)
-                { Faction = (FactionId)(i + 1), ChurchProperty = rules.startingChurchProperty };
+                var player = new PlayerState(FactionSetup.Name(seats[i]), StartingOffering, 50, 50)
+                { Faction = seats[i], ChurchProperty = rules.startingChurchProperty };
                 Add(player.MutableDeck, CardId.Follower, 5);
-                Add(player.MutableDeck, CardId.Evangelism, 4);
+                Add(player.MutableDeck, CardId.Evangelism, 3);
                 Add(player.MutableDeck, CardId.RequestOffering, 3);
-                Add(player.MutableDeck, CardId.RegularWorship, 3);
+                Add(player.MutableDeck, CardId.RegularWorship, 4);
                 if (rules.shuffleInitialDeck) Shuffle(player.MutableDeck);
                 players.Add(player);
             }
@@ -163,20 +174,26 @@ namespace Pilgrimage
             if (def.Implementation != EffectImplementation.Implemented || !handlers.TryGetValue(def.EffectKey, out ICardEffectHandler handler))
                 return Fail("현재 사용할 수 없는 카드입니다.", out reason);
             if (maxCards > 0 && CardsPlayedThisTurn >= maxCards) return Fail("임시 행동당 카드 수 제한에 도달했습니다.", out reason);
-            if (requireAtheists && def.AtheistChange < 0 && Atheists < -def.AtheistChange)
+            if (def.AtheistChange < 0 && Atheists < -def.AtheistChange)
                 return Fail("공용 무신론자가 부족합니다. (임시 사용 조건)", out reason);
             if (def.Target != TargetKind.Self && (target.PlayerIndex < 0 || target.PlayerIndex >= PlayerCount))
                 return Fail("유효한 대상 교단을 지정하세요.", out reason);
-            if (def.Target != TargetKind.Self && def.Id != CardId.Edict && !AllowSelfAsOpponentTarget && target.PlayerIndex == actor)
+            if (def.Target == TargetKind.Player && !AllowSelfAsOpponentTarget && target.PlayerIndex == actor)
                 return Fail("현재 임시 설정에서는 다른 교단을 지정해야 합니다.", out reason);
-            int cost = EffectiveCost(def, target.PlayerIndex);
+            if ((def.Id == CardId.AggressiveMission || def.Id == CardId.PoorRelief) && players[actor].Faith <= 20)
+                return Fail("신앙심 20 이하에서는 사용할 수 없습니다.", out reason);
+            if (def.Id == CardId.Interest && interestUsed.Contains(actor)) return Fail("이자는 한 턴에 한 장만 사용할 수 있습니다.", out reason);
+            int cost = EffectiveCost(actor, card, target);
             if (cost < 0) return Fail("현재 사용할 수 없는 카드입니다.", out reason);
             if (players[actor].Offering < cost) return Fail("헌금이 부족합니다.", out reason);
             if (def.Target == TargetKind.Card)
             {
-                LocatedCard located = FindCard(target.CardInstanceId);
-                if (located == null || located.Owner != target.PlayerIndex)
-                    return Fail("지정한 대상 카드가 해당 교단에 없습니다.", out reason);
+                if (target.Cards.Distinct().Count() != target.Cards.Length) return Fail("같은 카드를 중복 지정할 수 없습니다.", out reason);
+                foreach (Guid selected in target.Cards)
+                {
+                    LocatedCard located = FindCard(selected);
+                    if (located == null || located.Owner != target.PlayerIndex) return Fail("지정한 대상 카드가 해당 교단에 없습니다.", out reason);
+                }
             }
             return handler.Validate(this, actor, card, target, out reason);
         }
@@ -188,8 +205,12 @@ namespace Pilgrimage
             CardInstance card = player.Hand.First(c => c.InstanceId == cardId);
             string cardName = card.Definition.Name;
             int offering = player.Offering, faith = player.Faith, doctrine = player.Doctrine;
-            player.Offering -= EffectiveCost(card.Definition, target.PlayerIndex);
+            CardId playedId = card.Definition.Id;
+            player.Offering -= EffectiveCost(actor, card, target);
             handlers[card.Definition.EffectKey].Execute(new CardEffectContext(this, actor, card, target));
+            card.SuccessfulUses++;
+            if (playedId == CardId.HeresyJudgment) player.JudgmentUses++;
+            if (playedId == CardId.Interest) interestUsed.Add(actor);
             // Temporary resolution policy: successful plays discard immediately.
             // A central-table animation is a presentation reference, never a second card pile.
             player.MutableHand.Remove(card);
@@ -208,24 +229,26 @@ namespace Pilgrimage
             // discarded only after all four players have ended the round.
             foreach (CardInstance ignored in player.Hand.Where(c => c.Definition.Id == CardId.Heretic).ToArray())
             {
-                CardInstance follower = SessionCardEffects.EligibleFollowers(player.Deck).FirstOrDefault();
-                if (follower != null) Transform(follower.InstanceId, CardCatalog.Get(CardId.Heretic));
+                foreach (var follower in SessionCardEffects.EligibleFollowers(player.Deck).Take(player.Doctrine <= 30 ? 2 : 1).ToArray())
+                    Transform(follower.InstanceId, CardCatalog.Get(CardId.Heretic));
             }
             // Duration counts completed owner action turns, including the turn granted.
             foreach (OngoingEffect status in player.MutableStatuses) status.RemainingOwnerTurns--;
             player.MutableStatuses.RemoveAll(status => status.RemainingOwnerTurns <= 0);
             CardsPlayedThisTurn = 0;
+            interestUsed.Remove(actor);
             actionOffset++;
             LastMessage = player.Name + " 행동 종료";
             if (actionOffset == PlayerCount)
             {
                 foreach (PlayerState p in players)
                 {
+                    ApplyNaturalDecay(p);
                     // Played cards are already in Discard; move only residual hand cards.
                     p.MutableDiscard.AddRange(p.MutableHand);
                     p.MutableHand.Clear();
                 }
-                if (Round % 4 == 0) { Phase = GamePhase.RewardChoice; rewardOffset = 0; LastMessage = $"{Round}라운드 종료: 보상 선택"; }
+                if (Round % 4 == 0) AwardRoundRewards();
                 else AdvanceRound();
             }
             return true;
@@ -234,29 +257,19 @@ namespace Pilgrimage
         public IReadOnlyList<CardDefinition> RewardOptions()
         {
             if (Phase != GamePhase.RewardChoice) return Array.Empty<CardDefinition>();
-            FactionId faction = players[RewardPlayerIndex].Faction;
-            // Acquisition is independent of playability (e.g. faithful followers).
-            return catalog.Where(c => CurrentRewardKind == RewardKind.General ? c.Category == CardCategory.General : c.Category == CardCategory.Faction && c.Faction == faction).ToList().AsReadOnly();
+            return EligibleRewards(0, CurrentRewardKind);
         }
 
         public bool ChooseReward(int player, CardId id)
         {
-            if (Phase != GamePhase.RewardChoice || player != RewardPlayerIndex) return false;
-            CardDefinition card = RewardOptions().FirstOrDefault(c => c.Id == id);
-            if (card == null) return false;
-            Pile(players[player], rewardDestination).Add(new CardInstance(card));
-            LastMessage = $"{players[player].Name} 보상: {card.Name} → {rewardDestination} (획득 위치는 임시 설정)";
-            NextReward();
-            return true;
+            // Compatibility only: the supplied ID never changes the already rolled reward.
+            return AcknowledgeRewards(player);
         }
 
         public bool DeferMissingReward(int player)
         {
             if (Phase != GamePhase.RewardChoice || player != RewardPlayerIndex || RewardOptions().Count != 0) return false;
-            deferred.Add(new DeferredReward(Round, player, CurrentRewardKind));
-            LastMessage = "교단 카드 명세 미등록: 보상권을 보류 내역에 기록했습니다. 보상 지급 완료가 아닙니다.";
-            NextReward();
-            return true;
+            return false;
         }
 
         public LocatedCard FindCard(Guid id)
@@ -282,7 +295,10 @@ namespace Pilgrimage
         {
             LocatedCard located = FindCard(id);
             if (located == null || located.Pile == CardPile.Removed || located.Card.Definition.ProtectedFromCardEffects || definition == null) return false;
+            if (located.Card.Definition.Id == definition.Id) return true;
             located.Card.Transform(definition);
+            refusing.Remove(id);
+            if (definition.Id == CardId.RefusingFollower) refusing[id] = 3;
             return true;
         }
 
@@ -290,38 +306,55 @@ namespace Pilgrimage
         { Atheists = CardEffectResolver.ApplyBasic(players[actor], def, Atheists, true, true, true, false); }
 
         public int EffectiveCost(CardDefinition definition, int targetPlayer)
-            => definition.CostKind == CardCostKind.None || definition.CostKind == CardCostKind.MissingSpecification ? -1 : definition.Id == CardId.AggressiveMission
-                ? (targetPlayer >= 0 && targetPlayer < PlayerCount ? players[targetPlayer].Faith <= 30 ? 1 : 2 : -1)
-                : definition.Cost;
+            => CostFor(definition, ActivePlayerIndex, targetPlayer, players[ActivePlayerIndex].Hand.FirstOrDefault(c => c.Definition.Id == definition.Id));
 
         internal void AddAtheists(int delta) { Atheists = Math.Max(0, Atheists + delta); }
+        internal int RollInvestment() => effectRandom.Next(0, 31);
+        public int PreviewRoundIncome(int owner) => TimedCardEffects.Income(players[owner], RoundOffering + players[owner].FollowerCount / 10, EffectPolicy.incomeOrder);
         internal bool RemoveCard(Guid id)
         {
             LocatedCard located = FindCard(id);
-            return located != null && Transfer(id, located.Owner, CardPile.Removed);
+            if (located == null || !Transfer(id, located.Owner, CardPile.Removed)) return false;
+            if (IsPerson(located.Card.Definition)) AddAtheists(1);
+            refusing.Remove(id);
+            return true;
         }
 
         private void BeginRound()
         {
             Phase = GamePhase.Actions;
             actionOffset = 0;
-            foreach (PlayerState player in players)
+            ResolveRefusingFollowers();
+            for (int owner = 0; owner < PlayerCount; owner++)
             {
-                player.Offering = (accumulate ? player.Offering : 0) + RoundOffering;
-                Draw(player, RoundDraw);
+                PlayerState player = players[owner];
+                if (Round != 1 && !accumulate) player.Offering = 0;
+                TimedCardEffects.ResolveDelayed(this, owner);
+                if (player.Doctrine <= 20)
+                {
+                    var follower = SessionCardEffects.EligibleFollowers(player.Deck).FirstOrDefault();
+                    if (follower != null) Transform(follower.InstanceId, CardCatalog.Get(CardId.Heretic));
+                }
+                if (Round != 1) player.Offering = TimedCardEffects.SaturatingAdd(player.Offering, PreviewRoundIncome(owner));
+            }
+            for (int owner = 0; owner < PlayerCount; owner++)
+            {
+                PlayerState player = players[owner];
+                TimedCardEffects.ResolveLoans(this, owner);
+                TimedCardEffects.CompleteIncome(player);
+                Draw(player, DrawCount(owner));
             }
         }
 
         private void AdvanceRound()
         {
             if (Round == TotalRounds)
-            { Phase = GamePhase.Finished; LastMessage = "40라운드 종료. 점수·승리 판정은 기획 확정 대기입니다."; return; }
+            { Phase = GamePhase.Finished; ComputeWinners(); return; }
             Round++;
             BeginRound();
             LastMessage = $"{Round}라운드 시작 · 선플레이어: {players[FirstPlayerIndex].Name}";
         }
 
-        private void NextReward() { if (++rewardOffset == PlayerCount) AdvanceRound(); }
         private void Draw(PlayerState player, int count)
         {
             for (int i = 0; i < count; i++)

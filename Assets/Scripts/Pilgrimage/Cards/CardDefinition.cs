@@ -10,7 +10,8 @@ namespace Pilgrimage
         CharityPot, HumbleTemple, Tithe, Indulgence, Archbishop, Inquisitor, Inerrancy,
         Confession, FaithfulFollower, MoltingRitual, DeepForestSanctuary, WildRoar,
         Edict, Preaching, BondOfFaith, Penance, SolitaryReflection, CaravanInvestment,
-        WitchHunt, GlimmerOfHope, FalseRevelation, Blessing, ReturnToFaith, Paradise }
+        WitchHunt, GlimmerOfHope, FalseRevelation, Blessing, ReturnToFaith, Paradise,
+        InterfaithLoan, MassAgitation, HeresyJudgment, RefusingFollower, CallOfFur, AreaCleansing, FurRally }
     public enum CardCategory { General, Follower, Heretic, Faction }
     public enum FactionId { None, Poverty, Gold, Discipline, Fur }
     public enum EffectImplementation { Implemented, SpecificationPending, NotImplemented }
@@ -84,6 +85,7 @@ namespace Pilgrimage
     {
         public Guid InstanceId { get; } = Guid.NewGuid();
         public CardDefinition Definition { get; private set; }
+        public int SuccessfulUses { get; internal set; }
 
         public CardInstance(CardId id) { Definition = CardCatalog.Get(id); }
         public CardInstance(CardDefinition definition)

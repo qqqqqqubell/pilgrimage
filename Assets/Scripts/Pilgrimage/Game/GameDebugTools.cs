@@ -17,13 +17,13 @@ namespace Pilgrimage
             foreach (var id in definitions) GiveCard(game, owner, id);
         }
 
-        public static GameSession CreateCardLab()
+        public static GameSession CreateCardLab(FactionId humanFaction = FactionId.Poverty)
         {
-            var game = new GameSession(new DemoRuleAssumptions { shuffleInitialDeck = false });
+            var game = new GameSession(new DemoRuleAssumptions { shuffleInitialDeck = false }, humanFaction: humanFaction);
             ReplaceHand(game, 0, FiveActionPreset);
             for (int player = 0; player < GameSession.PlayerCount; player++)
             {
-                SetResources(game, player, 20, 50, 50);
+                SetResources(game, player, 100, 50, 50);
                 // Initial followers were drawn into hand by the unshuffled normal setup.
                 // Add explicit lab targets without changing the normal starting deck.
                 GiveCard(game, player, CardId.Follower, CardPile.Deck);
@@ -36,6 +36,7 @@ namespace Pilgrimage
             if (owner < 0 || owner >= GameSession.PlayerCount) throw new ArgumentOutOfRangeException(nameof(owner));
             var card = new CardInstance(id);
             GameSession.Pile(game.Players[owner], pile).Add(card);
+            game.TrackDebugCard(card, pile);
             return card;
         }
         public static void SetResources(GameSession game, int owner, int offering, int faith, int doctrine, int churchProperty = 0)

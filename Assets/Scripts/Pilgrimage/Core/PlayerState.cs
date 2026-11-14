@@ -10,8 +10,11 @@ namespace Pilgrimage
         public int Doctrine { get; internal set; }
         public FactionId Faction { get; internal set; }
         public int ChurchProperty { get; internal set; }
+        public int JudgmentUses { get; internal set; }
         internal readonly List<OngoingEffect> MutableStatuses = new List<OngoingEffect>();
         public IReadOnlyList<OngoingEffect> Statuses => MutableStatuses.AsReadOnly();
+        internal readonly List<TimedCardEffect> MutableTimedEffects = new List<TimedCardEffect>();
+        public IReadOnlyList<TimedCardEffect> TimedEffects => MutableTimedEffects.AsReadOnly();
         public int FollowerCount => CountFollowers();
         public int TotalCardCount => deck.Count + hand.Count + discard.Count;
 

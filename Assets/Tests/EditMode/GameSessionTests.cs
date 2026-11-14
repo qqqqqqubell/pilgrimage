@@ -141,13 +141,77 @@ namespace Pilgrimage.Tests
             Assert.That(target.Definition.Id, Is.EqualTo(CardId.FaithfulFollower));
         }
 
-        [Test] public void InterestHasNoOncePerTurnRestrictionAndRemodelingCannotPretendToExecute()
+        [Test] public void InterestHasNoOncePerTurnRestrictionAndRemodelingRegistersBothEffects()
         {
             GameSession game = Create(); GameDebugTools.SetResources(game, 0, 5, 50, 50, 29);
             for (int i = 0; i < 2; i++) Assert.That(game.TryPlay(0, Give(game, CardId.Interest).InstanceId, out _), Is.True);
             Assert.That(game.Players[0].Offering, Is.EqualTo(9));
-            Assert.That(game.TryPlay(0, Give(game, CardId.TempleRemodeling).InstanceId, out string reason), Is.False);
-            Assert.That(reason, Does.Contain("사용")); Assert.That(game.Players[0].ChurchProperty, Is.EqualTo(29));
+            Assert.That(game.TryPlay(0, Give(game, CardId.TempleRemodeling).InstanceId, out _), Is.True);
+            Assert.That(game.Players[0].Offering, Is.EqualTo(6)); Assert.That(game.Players[0].ChurchProperty, Is.EqualTo(25));
+            Assert.That(game.Players[0].TimedEffects.Count, Is.EqualTo(2));
+        }
+
+        [Test] public void IndulgenceExecutesSpecialHandlerAndPreservesEveryPhysicalCard()
+        {
+            var game = Create(); game.EndActionTurn(0); // Gold faction's action.
+            GameDebugTools.SetResources(game, 1, 10, 50, 50, 20);
+            var faithful = GameDebugTools.GiveCard(game, 1, CardId.FaithfulFollower, CardPile.Deck);
+            var first = GameDebugTools.GiveCard(game, 1, CardId.Follower, CardPile.Deck);
+            var second = GameDebugTools.GiveCard(game, 1, CardId.Follower, CardPile.Deck);
+            var untouched = GameDebugTools.GiveCard(game, 1, CardId.Follower, CardPile.Deck);
+            var source = Give(game, CardId.Indulgence, 1);
+            var player = game.Players[1];
+            var before = player.Deck.Concat(player.Hand).Concat(player.Discard).Concat(player.Removed).ToArray();
+            var deck = player.Deck.ToArray();
+            int followers = player.FollowerCount, heretics = before.Count(c => c.Definition.Id == CardId.Heretic);
+            Assert.That(source.Definition.EffectKey, Is.EqualTo("Indulgence"));
+            Assert.That(game.CanPlay(1, source.InstanceId, out _), Is.True);
+            Assert.That(game.TryPlay(1, source.InstanceId, out _), Is.True);
+            Assert.That(player.Offering, Is.EqualTo(16)); Assert.That(player.ChurchProperty, Is.EqualTo(26));
+            Assert.That(player.Faith, Is.EqualTo(40)); Assert.That(player.Doctrine, Is.EqualTo(40));
+            Assert.That(player.FollowerCount, Is.EqualTo(followers - 2));
+            Assert.That(player.Deck.Count(c => c.Definition.Id == CardId.Heretic), Is.EqualTo(heretics + 2));
+            Assert.That(first.Definition.Id, Is.EqualTo(CardId.Heretic)); Assert.That(second.Definition.Id, Is.EqualTo(CardId.Heretic));
+            Assert.That(untouched.Definition.Id, Is.EqualTo(CardId.Follower)); Assert.That(faithful.Definition.Id, Is.EqualTo(CardId.FaithfulFollower));
+            Assert.That(player.Deck, Is.EqualTo(deck)); // Same objects, same positions, different definitions.
+            Assert.That(game.FindCard(source.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
+            Assert.That(game.TryPlay(1, source.InstanceId, out _), Is.False);
+            var after = player.Deck.Concat(player.Hand).Concat(player.Discard).Concat(player.Removed).ToArray();
+            Assert.That(after, Is.EquivalentTo(before));
+            Assert.That(after.Select(c => c.InstanceId).Distinct().Count(), Is.EqualTo(before.Length));
+            foreach (var card in before) Assert.That(game.FindCard(card.InstanceId).Card, Is.SameAs(card));
+        }
+
+        [Test] public void IndulgenceShortageUsesExplicitDemoPolicyWithoutPartialPayment()
+        {
+            foreach (bool strict in new[] { true, false })
+            {
+                var game = new GameSession(new DemoRuleAssumptions { shuffleInitialDeck = false, requireFullFollowerTargets = strict });
+                var follower = GameDebugTools.GiveCard(game, 0, CardId.Follower, CardPile.Deck);
+                var card = Give(game, CardId.Indulgence);
+                Assert.That(game.TryPlay(0, card.InstanceId, out _), Is.EqualTo(!strict));
+                Assert.That(game.Players[0].Offering, Is.EqualTo(strict ? 5 : 11));
+                Assert.That(game.Players[0].ChurchProperty, Is.EqualTo(strict ? 0 : 6));
+                Assert.That(game.Players[0].Faith, Is.EqualTo(strict ? 50 : 40));
+                Assert.That(follower.Definition.Id, Is.EqualTo(strict ? CardId.Follower : CardId.Heretic));
+                Assert.That(game.FindCard(card.InstanceId).Pile, Is.EqualTo(strict ? CardPile.Hand : CardPile.Discard));
+            }
+        }
+
+        [Test] public void SevenNewEffectsHaveRealExecutableHandlers()
+        {
+            var pending = new[] { CardId.HumbleTemple, CardId.TempleRemodeling, CardId.Archbishop, CardId.Penance,
+                CardId.SolitaryReflection, CardId.CaravanInvestment, CardId.WitchHunt };
+            Assert.That(CardCatalog.All.All(c => c.Implementation == EffectImplementation.Implemented), Is.True);
+            foreach (var id in pending)
+            {
+                var game = Create(); GameDebugTools.SetResources(game, 0, 100, 50, 50, 100);
+                var source = Give(game, id); GameDebugTools.GiveCard(game, 0, CardId.Follower, CardPile.Deck);
+                Assert.That(game.CanPlay(0, source.InstanceId, out _), Is.True);
+                Assert.That(game.TryPlay(0, source.InstanceId, out _), Is.True);
+                Assert.That(game.FindCard(source.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
+                Assert.That(game.TryPlay(0, source.InstanceId, out _), Is.False);
+            }
         }
 
         [Test] public void PublicDenunciationTracksRemovedObjectAndIncreasesAtheists()

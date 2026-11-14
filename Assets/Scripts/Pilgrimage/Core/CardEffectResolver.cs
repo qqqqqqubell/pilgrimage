@@ -18,7 +18,7 @@ namespace Pilgrimage
         public static int ApplyBasic(PlayerState player, CardDefinition effect, int atheists,
             bool clampAtZero, bool limitStats, bool honorProtection = false, bool payCost = true)
         {
-            player.Offering = Math.Max(0, player.Offering - (payCost ? effect.Cost : 0) + effect.OfferingGain);
+            player.Offering = (int)Math.Max(0, Math.Min(int.MaxValue, (long)player.Offering - (payCost ? effect.Cost : 0) + effect.OfferingGain));
             bool faithProtected = false, doctrineProtected = false;
             if (honorProtection)
                 foreach (OngoingEffect status in player.Statuses)
@@ -26,8 +26,10 @@ namespace Pilgrimage
                     faithProtected |= status.Protection == EffectProtection.FaithChanges;
                     doctrineProtected |= status.Protection == EffectProtection.DoctrineChanges;
                 }
-            int faith = player.Faith + (faithProtected ? 0 : effect.FaithChange);
-            int doctrine = player.Doctrine + (doctrineProtected ? 0 : effect.DoctrineChange);
+            int faithDelta = faithProtected ? 0 : honorProtection ? TimedCardEffects.StatChange(player, effect.FaithChange) : effect.FaithChange;
+            int doctrineDelta = doctrineProtected ? 0 : honorProtection ? TimedCardEffects.StatChange(player, effect.DoctrineChange) : effect.DoctrineChange;
+            int faith = (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, (long)player.Faith + faithDelta));
+            int doctrine = (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, (long)player.Doctrine + doctrineDelta));
             player.Faith = Bound(faith, clampAtZero, limitStats);
             player.Doctrine = Bound(doctrine, clampAtZero, limitStats);
             player.ChurchProperty += effect.ChurchPropertyChange;

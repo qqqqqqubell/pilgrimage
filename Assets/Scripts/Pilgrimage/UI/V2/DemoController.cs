@@ -18,7 +18,7 @@ namespace Pilgrimage.UI
         public GameSession Game { get; private set; }
         public bool IsAnimating { get; private set; }
         public bool IsDetailOpen => modal != null && modal.gameObject.activeSelf;
-        public bool CanInteract => !IsAnimating && !IsDetailOpen && !IsAiRunning && !IsLabPanelOpen && !IsCardPickerOpen;
+        public bool CanInteract => Game != null && !IsFactionSelectionOpen && !IsAnimating && !IsDetailOpen && !IsAiRunning && !IsLabPanelOpen && !IsCardPickerOpen;
         public bool IsAiRunning { get; private set; }
         public CardDefinition RevealedAiCard { get; private set; }
         // Presentation reference only. The physical card remains in exactly one model pile.
@@ -52,14 +52,15 @@ namespace Pilgrimage.UI
         private void Start()
         {
             InitializeFont();
-            Game = new GameSession(settings != null ? settings.assumptions : null);
             if (Debug.isDebugBuild || Application.isEditor)
-                Debug.Log("Pilgrimage 카드 검증 (개발 로그)\n" + string.Join("\n", CardPresentation.Diagnostics(Game.Catalog)));
+                Debug.Log("Pilgrimage 카드 검증 (개발 로그)\n" + string.Join("\n", CardPresentation.Diagnostics(CardCatalog.All)));
             aiSettings = settings != null && settings.ai != null ? settings.ai : new AiSettings();
-            aiPlayers = Enumerable.Range(0, 4).Select(i => new RuleBasedAi(aiSettings, i)).ToArray();
             BuildUI();
-            Refresh();
+            BuildFactionSelection();
         }
+
+        private void InitializeAiPlayers()
+            => aiPlayers = Enumerable.Range(0, 4).Select(i => new RuleBasedAi(aiSettings, i)).ToArray();
 
         private void InitializeFont()
         {
@@ -270,7 +271,7 @@ namespace Pilgrimage.UI
         {
             if (!CanInteract || !SelectedCardId.HasValue) return;
             Guid id = SelectedCardId.Value;
-            if (Game.Players[0].Hand.FirstOrDefault(c => c.InstanceId == id)?.Definition.Id == CardId.Edict)
+            if (Game.Players[0].Hand.FirstOrDefault(c => c.InstanceId == id)?.Definition.Target == TargetKind.Card)
             { OpenRemovalPicker(id); return; }
             ExecutePlayerCard(id, new EffectTarget { PlayerIndex = targetPlayer });
         }
@@ -314,6 +315,7 @@ namespace Pilgrimage.UI
 
         private void Refresh()
         {
+            if (Game == null) return;
             for (int i = 0; i < 4; i++)
             {
                 PlayerState p = Game.Players[i];
@@ -375,27 +377,19 @@ namespace Pilgrimage.UI
             rewardRoot.gameObject.SetActive(Game.Phase == GamePhase.RewardChoice && (Game.RewardPlayerIndex == 0 || !aiSettings.autoPlay));
             if (!rewardRoot.gameObject.activeSelf) return;
             rewardRoot.SetAsLastSibling();
-            int player = Game.RewardPlayerIndex;
-            Text(rewardRoot, "Reward Title", $"{Game.Players[player].Name} · 보상 1장 선택", new Vector2(0, 210), new Vector2(1070, 55), 25);
-            RectTransform viewport = Panel(rewardRoot, "Reward Scroll", new Vector2(0, -8), new Vector2(1080, 355), Color.clear);
-            viewport.gameObject.AddComponent<RectMask2D>();
-            ScrollRect scroll = viewport.gameObject.AddComponent<ScrollRect>(); scroll.horizontal = false;
-            var options = Game.RewardOptions();
-            RectTransform content = Rect(viewport, "Reward Content", Vector2.zero, new Vector2(1080, Mathf.Max(355, Mathf.Ceil(options.Count / 4f) * 110)));
-            content.anchorMin = content.anchorMax = new Vector2(0.5f, 1); content.pivot = new Vector2(0.5f, 1); content.anchoredPosition = Vector2.zero;
-            scroll.viewport = viewport; scroll.content = content;
-            for (int i = 0; i < options.Count; i++)
+            Text(rewardRoot, "Reward Title", $"{Game.Round}라운드 · 무작위 카드 획득 결과", new Vector2(0, 210), new Vector2(1070, 55), 25);
+            for (int i = 0; i < Game.RoundRewards.Count; i++)
             {
-                CardDefinition def = options[i];
-                int row = i / 4, col = i % 4;
-                Button choiceButton = Button(content, CardPresentation.PlayerText(def.Name) + (CardPresentation.Availability(def) == "" ? "" : "\n사용 불가") + "\n" + CardPresentation.CostLabel(def),
-                    new Vector2(-405 + col * 270, -55 - row * 110), new Vector2(250, 96), () => { if (IsAnimating || IsAiRunning) return; Game.ChooseReward(player, def.Id); Log(Game.LastMessage); Refresh(); });
-                var choiceRect = (RectTransform)choiceButton.transform;
-                choiceRect.anchorMin = choiceRect.anchorMax = new Vector2(0.5f, 1);
+                var receipt = Game.RoundRewards[i];
+                string pile = receipt.Destination == CardPile.Discard ? "버린 더미" : receipt.Destination == CardPile.Deck ? "덱" : receipt.Destination == CardPile.Hand ? "손패" : "제거 더미";
+                Text(rewardRoot, "Award " + receipt.PlayerIndex,
+                    Game.Players[receipt.PlayerIndex].Name + "  ·  " + CardCatalog.Get(receipt.CardId).Name + "  →  " + pile,
+                    new Vector2(0, 125 - i * 75), new Vector2(1050, 60), 24);
             }
-            Text(rewardRoot, "Reward Note", "스크롤하여 선택 · 사용 불가 카드는 획득 후에도 사용할 수 없습니다", new Vector2(0, -215), new Vector2(1070, 40), 18);
-            if (options.Count == 0)
-                Button(rewardRoot, "명세 미등록 보상권 보류 (테스트)", Vector2.zero, new Vector2(750, 70), () => { Game.DeferMissingReward(player); Refresh(); });
+            Button(rewardRoot, "획득 확인 · 계속", new Vector2(0, -190), new Vector2(500, 55), () => {
+                if (IsAnimating || IsAiRunning) return;
+                Game.AcknowledgeRewards(); Log(Game.LastMessage); Refresh();
+            });
         }
 
         private void EndLocalTurn()
@@ -416,23 +410,7 @@ namespace Pilgrimage.UI
             IsAiRunning = true;
             try
             {
-                if (Game.Phase == GamePhase.RewardChoice)
-                {
-                    int owner = Game.RewardPlayerIndex;
-                    if (owner == 0) yield break;
-                    CardDefinition choice = aiPlayers[owner].ChooseReward(new AiObservation(Game, owner), Game.RewardOptions());
-                    if (choice != null)
-                    {
-                        Game.ChooseReward(owner, choice.Id);
-                        Feedback(Game.Players[owner].Name + "\n보상: " + choice.Name);
-                        Log(Game.LastMessage);
-                    }
-                    else if (Game.RewardOptions().Count == 0) Game.DeferMissingReward(owner);
-                    else Game.ChooseReward(owner, Game.RewardOptions()[0].Id); // Acquisition only; never execute an unimplemented effect.
-                    Refresh();
-                    yield return new WaitForSecondsRealtime(Mathf.Clamp(aiSettings.revealInterval, 0.1f, 10));
-                    yield break;
-                }
+                if (Game.Phase != GamePhase.Actions) yield break;
                 int actor = Game.ActivePlayerIndex;
                 if (actor == 0 || Game.Phase != GamePhase.Actions) yield break;
                 var turn = new AiTurn(Game, actor, aiPlayers[actor], aiSettings);
@@ -487,16 +465,17 @@ namespace Pilgrimage.UI
         private void ResetGame()
         {
             if (!CanInteract) return;
-            Game = IsCardLab ? GameDebugTools.CreateCardLab() : new GameSession(settings != null ? settings.assumptions : null);
-            aiPlayers = Enumerable.Range(0, 4).Select(i => new RuleBasedAi(aiSettings, i)).ToArray();
-            SelectedCardId = null; RevealedAiCard = null; RevealedCardInstanceId = null; revealedCard.gameObject.SetActive(false); logs.Clear(); logText.text = ""; messageText.text = ""; Refresh();
+            SelectedCardId = null; RevealedAiCard = null; RevealedCardInstanceId = null; revealedCard.gameObject.SetActive(false); logs.Clear(); logText.text = ""; messageText.text = "";
+            if (IsCardLab) { Game = GameDebugTools.CreateCardLab(Game.HumanFaction); Refresh(); }
+            else { rewardRoot.gameObject.SetActive(false); ShowFactionSelection(); }
         }
-        private void CycleTarget() { if (!CanInteract) return; targetPlayer = targetPlayer % 3 + 1; targetLabel.text = "효과 대상: " + Game.Players[targetPlayer].Name; }
+        private void CycleTarget() { if (!CanInteract) return; targetPlayer = Game.AllowSelfAsOpponentTarget ? (targetPlayer + 1) % 4 : targetPlayer % 3 + 1; targetLabel.text = "효과 대상: " + Game.Players[targetPlayer].Name; }
         private void ShowPlayerStats(int index)
         {
             if (!CanInteract) return;
             PlayerState player = Game.Players[index];
-            OpenDetail($"<size=38>{player.Name}</size>\n\n신앙심: {player.Faith} / 100\n교리 정합성: {player.Doctrine} / 100\n헌금: {player.Offering}\n신도 수: {player.FollowerCount}\n덱: {player.Deck.Count}장 / 손패: {player.Hand.Count}장 / 버린 더미: {player.Discard.Count}장\n교회 재산: {player.ChurchProperty}\n지속 효과: {player.Statuses.Count}개\n\n상대 손패·덱의 카드 이름은 공개하지 않습니다.");
+            string effects = string.Join("\n", player.TimedEffects.Select(e => CardCatalog.Get(e.Source).Name + " · 남은 정산 " + e.RemainingRoundStarts + "회"));
+            OpenDetail($"<size=38>{player.Name}</size>\n\n신앙심: {player.Faith} / 100\n교리 정합성: {player.Doctrine} / 100\n헌금: {player.Offering}\n신도 수: {player.FollowerCount}\n덱: {player.Deck.Count}장 / 손패: {player.Hand.Count}장 / 버린 더미: {player.Discard.Count}장\n교회 재산: {player.ChurchProperty}\n다음 라운드 수입: {Game.PreviewRoundIncome(index)}\n지속 효과: {player.Statuses.Count + player.TimedEffects.Count}개\n{effects}\n\n상대 손패·덱의 카드 이름은 공개하지 않습니다.");
         }
         private void ShowCatalog()
         {

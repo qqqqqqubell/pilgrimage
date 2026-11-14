@@ -27,7 +27,7 @@ foreach ($module in @('ui','imgui','audio','physics2d','physics','jsonserialize'
 }
 [IO.File]::WriteAllText((Join-Path $validationRoot 'Packages/manifest.json'), (@{ dependencies=$dependencies } | ConvertTo-Json -Depth 5))
 $arguments = @('-batchmode','-projectPath',$validationRoot,'-runTests','-testPlatform',$Platform,'-testFilter','Pilgrimage.Tests','-testResults',(Join-Path $validationRoot 'results.xml'),'-logFile',(Join-Path $validationRoot 'unity.log'))
-if ($Render) { $arguments += @('-screen-width','1920','-screen-height','1080','-pilgrimageScreenshot',(Join-Path $validationRoot 'demo.png'),'-pilgrimageLabScreenshot',(Join-Path $validationRoot 'card-lab.png')) }
+if ($Render) { $arguments += @('-screen-width','1920','-screen-height','1080','-pilgrimageScreenshot',(Join-Path $validationRoot 'demo.png'),'-pilgrimageLabScreenshot',(Join-Path $validationRoot 'card-lab.png'),'-pilgrimageFactionScreenshot',(Join-Path $validationRoot 'faction-selection.png')) }
 else { $arguments += '-nographics' }
 Write-Output ('ISOLATED_PROJECT=' + $validationRoot)
 # Hidden batch process; original project is never opened or refreshed by this tool.
