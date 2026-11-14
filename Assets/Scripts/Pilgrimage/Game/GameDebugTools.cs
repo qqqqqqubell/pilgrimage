@@ -5,6 +5,32 @@ namespace Pilgrimage
     // Explicitly bypasses acquisition rules for local experiments, never AI logic.
     public static class GameDebugTools
     {
+        public static readonly CardId[] FiveActionPreset = { CardId.Evangelism, CardId.Edict, CardId.Preaching, CardId.BondOfFaith, CardId.AggressiveMission };
+
+        public static void ReplaceHand(GameSession game, int owner, System.Collections.Generic.IEnumerable<CardId> ids)
+        {
+            // Explicit development operation, preserving existing physical identities.
+            var definitions = System.Linq.Enumerable.ToArray(ids);
+            foreach (var id in definitions) CardCatalog.Get(id); // Validate before mutation.
+            PlayerState player = game.Players[owner];
+            player.MutableDiscard.AddRange(player.MutableHand); player.MutableHand.Clear();
+            foreach (var id in definitions) GiveCard(game, owner, id);
+        }
+
+        public static GameSession CreateCardLab()
+        {
+            var game = new GameSession(new DemoRuleAssumptions { shuffleInitialDeck = false });
+            ReplaceHand(game, 0, FiveActionPreset);
+            for (int player = 0; player < GameSession.PlayerCount; player++)
+            {
+                SetResources(game, player, 20, 50, 50);
+                // Initial followers were drawn into hand by the unshuffled normal setup.
+                // Add explicit lab targets without changing the normal starting deck.
+                GiveCard(game, player, CardId.Follower, CardPile.Deck);
+                GiveCard(game, player, CardId.Follower, CardPile.Deck);
+            }
+            return game;
+        }
         public static CardInstance GiveCard(GameSession game, int owner, CardId id, CardPile pile = CardPile.Hand)
         {
             if (owner < 0 || owner >= GameSession.PlayerCount) throw new ArgumentOutOfRangeException(nameof(owner));

@@ -17,13 +17,17 @@ namespace Pilgrimage.Tests
                 Assert.That(game.ChooseReward(game.RewardPlayerIndex, game.RewardOptions()[0].Id), Is.True);
         }
 
-        [Test] public void CatalogHasExactlyTenGeneralAndSixteenFactionCardsAndNoDeletedCard()
+        [Test] public void LatestCatalogHasTwentyTwoGeneralAndSixteenFactionCards()
         {
-            Assert.That(CardCatalog.All.Count, Is.EqualTo(26));
-            Assert.That(CardCatalog.All.Count(c => c.Faction == FactionId.None), Is.EqualTo(10));
+            Assert.That(CardCatalog.All.Count, Is.EqualTo(38));
+            Assert.That(CardCatalog.All.Count(c => c.Faction == FactionId.None), Is.EqualTo(22));
             foreach (FactionId faction in new[] { FactionId.Poverty, FactionId.Gold, FactionId.Discipline, FactionId.Fur })
                 Assert.That(CardCatalog.All.Count(c => c.Faction == faction), Is.EqualTo(4));
-            Assert.That(CardCatalog.All.Any(c => c.Name == "신앙의 결속"), Is.False);
+            Assert.That(CardCatalog.All.Any(c => c.Name == "신앙의 결속"), Is.True);
+            Assert.That(CardCatalog.Get(CardId.RequestOffering).Cost, Is.Zero);
+            Assert.That(CardCatalog.Get(CardId.ClergyTraining).Cost, Is.EqualTo(2));
+            Assert.That(CardCatalog.Get(CardId.Confession).Cost, Is.EqualTo(5));
+            Assert.That(CardCatalog.Get(CardId.Archbishop).Name, Is.EqualTo("대주교"));
             Assert.That(CardCatalog.Get(CardId.FaithfulFollower).Cost, Is.EqualTo(-1));
             Assert.That(CardCatalog.Get(CardId.TempleRemodeling).ChurchPropertyChange, Is.EqualTo(-4));
             Assert.That(CardCatalog.All.All(c => !string.IsNullOrEmpty(c.FlavorText)), Is.True);
@@ -67,7 +71,7 @@ namespace Pilgrimage.Tests
                 if (round % 4 != 0) continue;
                 Assert.That(game.Phase, Is.EqualTo(GamePhase.RewardChoice));
                 if (round % 8 == 0) { faction++; Assert.That(game.RewardOptions().Count, Is.EqualTo(4)); }
-                else { general++; Assert.That(game.RewardOptions().Count, Is.EqualTo(8)); }
+                else { general++; Assert.That(game.RewardOptions().Count, Is.EqualTo(20)); }
                 foreach (CardDefinition def in game.RewardOptions())
                     Assert.That(def.Category == CardCategory.Follower || def.Category == CardCategory.Heretic, Is.False);
                 ResolveRewards(game);
@@ -85,9 +89,6 @@ namespace Pilgrimage.Tests
             Assert.That(game.Players[0].Faith, Is.EqualTo(100)); Assert.That(game.Players[0].Doctrine, Is.EqualTo(100));
             GameDebugTools.SetResources(game, 0, 0, 1, 2);
             var offering = Give(game, CardId.RequestOffering);
-            Assert.That(game.TryPlay(0, offering.InstanceId, out _), Is.False);
-            Assert.That(game.FindCard(offering.InstanceId).Pile, Is.EqualTo(CardPile.Hand));
-            GameDebugTools.SetResources(game, 0, 1, 1, 2);
             Assert.That(game.TryPlay(0, offering.InstanceId, out _), Is.True);
             Assert.That(game.Players[0].Offering, Is.EqualTo(2)); Assert.That(game.Players[0].Faith, Is.Zero); Assert.That(game.Players[0].Doctrine, Is.Zero);
         }
@@ -146,7 +147,7 @@ namespace Pilgrimage.Tests
             for (int i = 0; i < 2; i++) Assert.That(game.TryPlay(0, Give(game, CardId.Interest).InstanceId, out _), Is.True);
             Assert.That(game.Players[0].Offering, Is.EqualTo(9));
             Assert.That(game.TryPlay(0, Give(game, CardId.TempleRemodeling).InstanceId, out string reason), Is.False);
-            Assert.That(reason, Does.Contain("구현")); Assert.That(game.Players[0].ChurchProperty, Is.EqualTo(29));
+            Assert.That(reason, Does.Contain("사용")); Assert.That(game.Players[0].ChurchProperty, Is.EqualTo(29));
         }
 
         [Test] public void PublicDenunciationTracksRemovedObjectAndIncreasesAtheists()
@@ -174,6 +175,45 @@ namespace Pilgrimage.Tests
             for (int i = 0; i < 3; i++) EndRound(game);
             var actual = game.Players.SelectMany(p => p.Hand.Concat(p.Deck).Concat(p.Discard)).Select(c => c.InstanceId).ToArray();
             Assert.That(actual, Is.EquivalentTo(ids)); Assert.That(actual.Distinct().Count(), Is.EqualTo(60));
+        }
+
+        [Test] public void PartialDrawKeepsRemainingDeckThenReshufflesOnlyForMissingCards()
+        {
+            GameSession game = Create();
+            CardInstance training = Give(game, CardId.ClergyTraining);
+            Assert.That(game.TryPlay(0, training.InstanceId, out _), Is.True);
+            EndRound(game); EndRound(game);
+            Assert.That(game.Round, Is.EqualTo(3));
+            var lastTwo = game.Players[0].Deck.ToArray();
+            Assert.That(lastTwo.Length, Is.EqualTo(2));
+            var originalIds = game.Players[0].Deck.Concat(game.Players[0].Hand).Concat(game.Players[0].Discard).Select(c => c.InstanceId).ToArray();
+            EndRound(game);
+            PlayerState player = game.Players[0];
+            Assert.That(game.Round, Is.EqualTo(4));
+            Assert.That(player.Hand.Count, Is.EqualTo(5));
+            Assert.That(player.Hand.Take(2), Is.EqualTo(lastTwo));
+            Assert.That(player.Discard, Is.Empty);
+            Assert.That(player.Deck.Count, Is.EqualTo(13));
+            var afterIds = player.Deck.Concat(player.Hand).Concat(player.Discard).Select(c => c.InstanceId).ToArray();
+            Assert.That(afterIds, Is.EquivalentTo(originalIds));
+            Assert.That(afterIds.Distinct().Count(), Is.EqualTo(originalIds.Length));
+        }
+
+        [Test] public void PlayedCardCannotBeReusedAndRoundCleanupDoesNotDiscardItTwice()
+        {
+            GameSession game = Create();
+            CardInstance worship = Give(game, CardId.RegularWorship);
+            var initial = game.Players.SelectMany(p => p.Deck.Concat(p.Hand).Concat(p.Discard).Concat(p.Removed)).Select(c => c.InstanceId).ToArray();
+            Assert.That(game.TryPlay(0, worship.InstanceId, out _), Is.True);
+            Assert.That(game.TryPlay(0, worship.InstanceId, out _), Is.False);
+            Assert.That(game.Players[0].Offering, Is.EqualTo(4));
+            Assert.That(game.Players[0].Faith, Is.EqualTo(55));
+            Assert.That(game.FindCard(worship.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
+            EndRound(game);
+            var actual = game.Players.SelectMany(p => p.Deck.Concat(p.Hand).Concat(p.Discard).Concat(p.Removed)).ToArray();
+            Assert.That(actual.Select(c => c.InstanceId), Is.EquivalentTo(initial));
+            Assert.That(actual.Count(c => c.InstanceId == worship.InstanceId), Is.EqualTo(1));
+            Assert.That(actual.Single(c => c.InstanceId == worship.InstanceId), Is.SameAs(worship));
         }
 
         [Test] public void FanLayoutHandlesOneFiveAndLargeHandsWithoutOverflow()

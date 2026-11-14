@@ -8,6 +8,8 @@ namespace Pilgrimage.UI
     {
         [Header("미확정 규칙 — 확정 카드 데이터와 분리")]
         public DemoRuleAssumptions assumptions = new DemoRuleAssumptions();
+        [Header("AI — 교단별 가중치·안전 상한·공개 간격")]
+        public AiSettings ai = new AiSettings();
         [Header("선택 사항 — 비어 있으면 임시 도형과 OS 한글 폰트 사용")]
         public TMP_FontAsset koreanFont;
         public Sprite cardBack;

@@ -1,5 +1,7 @@
 # Pilgrimage 프로토타입 v2
 
+> 이 문서는 이전 26종 기획의 구현 기록입니다. 현재 38종 카드·AI 자동 플레이·라운드 규칙은 [2026-11-14 개선 안내](AiUpdate_2026-11-14.ko.md)를 따릅니다.
+
 기준: `Docs/Pilgrimage_Game_Design_Latest.md`, Unity **6000.6.9f1**.
 
 ![1920×1080 데모 렌더링](Images/PilgrimageDemo.png)

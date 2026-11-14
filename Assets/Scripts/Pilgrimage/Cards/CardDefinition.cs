@@ -7,12 +7,15 @@ namespace Pilgrimage
     public enum CardId { Evangelism, RequestOffering, RegularWorship, Follower,
         Heretic, TempleRemodeling, Interest, ClergyTraining, PublicDenunciation,
         Council, Reaper, AggressiveMission, PoorRelief, SalvationFundraising,
-        CharityPot, HumbleTemple, Tithe, Indulgence, Pope, Inquisitor, Inerrancy,
-        Confession, FaithfulFollower, MoltingRitual, DeepForestSanctuary, WildRoar }
+        CharityPot, HumbleTemple, Tithe, Indulgence, Archbishop, Inquisitor, Inerrancy,
+        Confession, FaithfulFollower, MoltingRitual, DeepForestSanctuary, WildRoar,
+        Edict, Preaching, BondOfFaith, Penance, SolitaryReflection, CaravanInvestment,
+        WitchHunt, GlimmerOfHope, FalseRevelation, Blessing, ReturnToFaith, Paradise }
     public enum CardCategory { General, Follower, Heretic, Faction }
     public enum FactionId { None, Poverty, Gold, Discipline, Fur }
     public enum EffectImplementation { Implemented, SpecificationPending, NotImplemented }
     public enum TargetKind { Self, Player, Card }
+    public enum CardCostKind { None, Fixed, Variable, MissingSpecification }
 
     // Immutable definitions describe the supplied card rules, not test setup.
     public sealed class CardDefinition
@@ -21,6 +24,8 @@ namespace Pilgrimage
         public string Name { get; }
         public string Description { get; }
         public int Cost { get; }
+        public CardCostKind CostKind { get; }
+        public int? FixedOfferingCost => CostKind == CardCostKind.Fixed ? Cost : (int?)null;
         public bool IsPlayable { get; }
         public int OfferingGain { get; }
         public int FaithChange { get; }
@@ -46,13 +51,15 @@ namespace Pilgrimage
             EffectImplementation implementation = EffectImplementation.Implemented,
             TargetKind target = TargetKind.Self, string conditions = "헌금 코스트 지불 가능",
             string flavorText = "미정", string effectKey = "basic", int churchPropertyChange = 0,
-            string costText = null, bool countsAsFollower = false, bool protectedFromCardEffects = false)
+            string costText = null, bool countsAsFollower = false, bool protectedFromCardEffects = false,
+            CardCostKind? costKind = null)
         {
             Id = id;
             Name = name;
             Description = description;
             Cost = cost;
-            IsPlayable = playable;
+            CostKind = costKind ?? (cost >= 0 ? CardCostKind.Fixed : CardCostKind.MissingSpecification);
+            IsPlayable = playable && CostKind != CardCostKind.None && CostKind != CardCostKind.MissingSpecification;
             OfferingGain = offeringGain;
             FaithChange = faithChange;
             DoctrineChange = doctrineChange;
@@ -66,7 +73,7 @@ namespace Pilgrimage
             FlavorText = flavorText;
             EffectKey = effectKey;
             ChurchPropertyChange = churchPropertyChange;
-            CostText = costText ?? (cost < 0 ? "미정" : $"헌금 {cost}");
+            CostText = CostKind == CardCostKind.None ? "" : costText ?? (cost < 0 ? "원문 미명시" : $"헌금 {cost}");
             CountsAsFollower = countsAsFollower || category == CardCategory.Follower;
             ProtectedFromCardEffects = protectedFromCardEffects;
         }

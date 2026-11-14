@@ -94,8 +94,8 @@ namespace Pilgrimage
                 {
                     bool playable = game.CanPlay(game.ActivePlayerIndex, card, out string reason);
                     GUILayout.BeginVertical(GUI.skin.box);
-                    GUILayout.Label($"{card.Definition.Name}  |  비용: 헌금 {card.Definition.Cost}", headingStyle);
-                    GUILayout.Label(card.Definition.Description, bodyStyle);
+                    GUILayout.Label(CardPresentation.PlayerText(card.Definition.Name) + (CardPresentation.CostLabel(card.Definition) == "" ? "" : "  |  " + CardPresentation.CostLabel(card.Definition)), headingStyle);
+                    GUILayout.Label(CardPresentation.PlayerText(card.Definition.Description), bodyStyle);
                     GUILayout.BeginHorizontal();
                     GUI.enabled = playable;
                     if (GUILayout.Button("카드 사용", buttonStyle, GUILayout.Width(140), GUILayout.Height(34))) pendingCard = card;

@@ -12,13 +12,18 @@ using UnityEngine.UI;
 namespace Pilgrimage.UI
 {
     [DisallowMultipleComponent]
-    public sealed class DemoController : MonoBehaviour
+    public sealed partial class DemoController : MonoBehaviour
     {
         [SerializeField] private DemoSettings settings = null;
         public GameSession Game { get; private set; }
         public bool IsAnimating { get; private set; }
         public bool IsDetailOpen => modal != null && modal.gameObject.activeSelf;
-        public bool CanInteract => !IsAnimating && !IsDetailOpen;
+        public bool CanInteract => !IsAnimating && !IsDetailOpen && !IsAiRunning && !IsLabPanelOpen && !IsCardPickerOpen;
+        public bool IsAiRunning { get; private set; }
+        public CardDefinition RevealedAiCard { get; private set; }
+        // Presentation reference only. The physical card remains in exactly one model pile.
+        public Guid? RevealedCardInstanceId { get; private set; }
+        public AiSettings AiConfiguration => aiSettings;
         public Guid? SelectedCardId { get; private set; }
         public IReadOnlyList<CardView> HandViews => handViews.AsReadOnly();
         public Sprite Illustration => settings != null ? settings.cardIllustration : null;
@@ -26,6 +31,13 @@ namespace Pilgrimage.UI
         private bool ownsFont;
         private RectTransform root, handRoot, modal, rewardRoot;
         private TMP_Text roundText, messageText, detailText;
+        private TMP_Text activeText, revealedName, revealedNumber;
+        private RectTransform revealedCard;
+        private readonly TMP_Text[,] opponentStats = new TMP_Text[3, 3];
+        private readonly TMP_Text[] ownStats = new TMP_Text[4];
+        private AiSettings aiSettings;
+        private RuleBasedAi[] aiPlayers;
+        private Button manualAiButton;
         private readonly TMP_Text[] playerLabels = new TMP_Text[4];
         private readonly RectTransform[] opponentHands = new RectTransform[3];
         private readonly List<CardView> handViews = new List<CardView>();
@@ -41,6 +53,10 @@ namespace Pilgrimage.UI
         {
             InitializeFont();
             Game = new GameSession(settings != null ? settings.assumptions : null);
+            if (Debug.isDebugBuild || Application.isEditor)
+                Debug.Log("Pilgrimage 카드 검증 (개발 로그)\n" + string.Join("\n", CardPresentation.Diagnostics(Game.Catalog)));
+            aiSettings = settings != null && settings.ai != null ? settings.ai : new AiSettings();
+            aiPlayers = Enumerable.Range(0, 4).Select(i => new RuleBasedAi(aiSettings, i)).ToArray();
             BuildUI();
             Refresh();
         }
@@ -92,24 +108,30 @@ namespace Pilgrimage.UI
             Stretch(background);
             background.GetComponent<Image>().raycastTarget = false;
             Text(root, "Title", "PILGRIMAGE  /  FOUR ORDERS", new Vector2(-370, 501), new Vector2(1050, 48), 35, TextAlignmentOptions.Left);
-            Text(root, "Build Status", "LOCAL DEMO v2 · AI / 온라인 없음", new Vector2(650, 501), new Vector2(450, 40), 21);
+            Button(root, "카드 도감", new Vector2(650, 501), new Vector2(165, 40), ShowCatalog);
+            Button(root, "메뉴", new Vector2(830, 501), new Vector2(130, 40), ShowMenu);
 
             BuildPlayerPanel(0, new Vector2(0, -487), new Vector2(1540, 86));
             BuildPlayerPanel(1, new Vector2(0, 356), new Vector2(680, 205));
             BuildPlayerPanel(2, new Vector2(-755, 105), new Vector2(340, 405));
             BuildPlayerPanel(3, new Vector2(755, 105), new Vector2(340, 405));
 
-            RectTransform table = Panel(root, "Shared Table", new Vector2(0, 98), new Vector2(1050, 300), new Color(0.075f, 0.125f, 0.155f));
-            roundText = Text(table, "Round State", "", new Vector2(0, 118), new Vector2(1010, 45), 25);
-            messageText = Text(table, "Feedback", "", new Vector2(0, 61), new Vector2(980, 65), 22);
-            endButton = Button(table, "내 행동 종료 (임시)", new Vector2(-325, -2), new Vector2(290, 46), EndLocalTurn);
-            debugButton = Button(table, "테스트 교단 행동 1회 + 종료", new Vector2(70, -2), new Vector2(440, 46), DebugOpponentStep);
-            Button(table, "초기화", new Vector2(405, -2), new Vector2(160, 46), ResetGame);
-            Button(table, "대상 변경", new Vector2(-360, -63), new Vector2(180, 42), CycleTarget);
-            targetLabel = Text(table, "Target", "", new Vector2(-30, -63), new Vector2(460, 42), 21);
-            Button(table, "카드 목록 26종", new Vector2(350, -63), new Vector2(270, 42), ShowCatalog);
-            Text(table, "Controls", "← → 선택  ·  Space / 우클릭 상세  ·  Enter / 더블클릭 사용  ·  ESC 닫기", new Vector2(0, -118), new Vector2(1010, 35), 20);
-            logText = Text(root, "Public Action Log", "", new Vector2(0, -91), new Vector2(1020, 50), 16);
+            RectTransform table = Panel(root, "Shared Table", new Vector2(0, 98), new Vector2(1050, 300), new Color(0.055f, 0.1f, 0.125f));
+            roundText = Text(table, "Round State", "", new Vector2(0, 125), new Vector2(990, 35), 25);
+            activeText = Text(table, "Active Order", "", new Vector2(-300, 66), new Vector2(370, 70), 26);
+            messageText = Text(table, "Feedback", "", new Vector2(295, 8), new Vector2(350, 120), 22);
+            endButton = Button(table, "행동 종료", new Vector2(365, -113), new Vector2(230, 45), EndLocalTurn);
+            Button(table, "대상", new Vector2(-410, -113), new Vector2(110, 42), CycleTarget);
+            targetLabel = Text(table, "Target", "", new Vector2(-175, -113), new Vector2(335, 42), 18);
+            revealedCard = Panel(table, "Submitted AI Card", new Vector2(0, 6), new Vector2(148, 206), new Color(0.15f, 0.25f, 0.3f));
+            revealedNumber = Text(revealedCard, "Public Number", "", new Vector2(0, 78), new Vector2(130, 26), 18);
+            revealedName = Text(revealedCard, "Public Name", "", new Vector2(0, 37), new Vector2(130, 62), 23);
+            RectTransform art = Panel(revealedCard, "Public Illustration", new Vector2(0, -41), new Vector2(110, 75), new Color(0, 0, 0, 0.22f));
+            art.GetComponent<Image>().raycastTarget = false;
+            if (Illustration != null) { art.GetComponent<Image>().sprite = Illustration; art.GetComponent<Image>().color = Color.white; }
+            else Text(art, "Public Placeholder", "+", Vector2.zero, new Vector2(100, 60), 40);
+            revealedCard.gameObject.SetActive(false);
+            logText = Text(root, "Public Action Log", "", new Vector2(0, -91), new Vector2(1020, 40), 16);
             handRoot = Rect(root, "My Hand", new Vector2(0, -281), new Vector2(1300, 300));
 
             rewardRoot = Panel(root, "Reward Selection", new Vector2(0, 80), new Vector2(1130, 510), new Color(0.085f, 0.14f, 0.19f));
@@ -130,29 +152,50 @@ namespace Pilgrimage.UI
             detailText.rectTransform.anchoredPosition = new Vector2(0, -10);
             scroll.content = content; scroll.viewport = viewport;
             Button(detailPanel, "닫기  ·  ESC / 우클릭", new Vector2(-270, -392), new Vector2(450, 48), CloseDetail);
-            grantDebugButton = Button(detailPanel, "실험: 26종 손패 추가 + 자원 설정", new Vector2(270, -392), new Vector2(540, 48), GrantAllForDebug);
+            grantDebugButton = Button(detailPanel, "카드 실험", new Vector2(270, -392), new Vector2(270, 48), GrantAllForDebug);
+            debugButton = Button(detailPanel, "새 게임", new Vector2(215, -392), new Vector2(190, 48), () => { CloseDetail(); ResetGame(); });
+            manualAiButton = Button(detailPanel, "AI 수동 진행", new Vector2(440, -392), new Vector2(210, 48), () => { CloseDetail(); DebugOpponentStep(); });
+            debugButton.gameObject.SetActive(false); manualAiButton.gameObject.SetActive(false);
             grantDebugButton.gameObject.SetActive(false);
             modal.gameObject.SetActive(false);
+            BuildCardLabUI();
         }
 
         private void BuildPlayerPanel(int index, Vector2 position, Vector2 size)
         {
             RectTransform panel = Panel(root, $"Player {index} Table", position, size, index == 0 ? new Color(0.1f, 0.22f, 0.23f) : new Color(0.095f, 0.13f, 0.17f));
-            float top = size.y / 2 - 45;
-            playerLabels[index] = Text(panel, "Public Stats", "", new Vector2(0, top), new Vector2(size.x - 24, index == 0 ? 70 : 90), index == 0 ? 22 : 21);
-            if (index >= 2)
+            playerLabels[index] = Text(panel, "Public Stats", "", new Vector2(index == 0 ? -550 : 0, index == 0 ? 0 : size.y / 2 - 30), new Vector2(index == 0 ? 380 : size.x - 24, 42), 24);
+            if (index == 0)
             {
-                playerLabels[index].rectTransform.anchoredPosition = new Vector2(0, size.y / 2 - 75);
-                playerLabels[index].rectTransform.sizeDelta = new Vector2(size.x - 24, 130);
+                string[] glyphs = { "$", "믿", "율", "人" };
+                for (int i = 0; i < 4; i++) ownStats[i] = StatChip(panel, glyphs[i], new Vector2(-155 + i * 180, 0), i);
             }
+            else for (int i = 0; i < 3; i++) opponentStats[index - 1, i] = StatChip(panel, new[] { "人", "$", "패" }[i], new Vector2(-100 + i * 100, index == 1 ? 20 : 108), i);
             Button(panel, index == 0 ? "내 추가 상태" : "상태", new Vector2(size.x / 2 - (index == 0 ? 100 : 48), -size.y / 2 + 23), new Vector2(index == 0 ? 170 : 80, 33), () => ShowPlayerStats(index));
             if (index > 0)
-                opponentHands[index - 1] = Rect(panel, "Private Hand Backs", new Vector2(0, index == 1 ? -31 : -26), new Vector2(size.x - 25, index == 1 ? 80 : 200));
+                opponentHands[index - 1] = Rect(panel, "Private Hand Backs", new Vector2(0, index == 1 ? -47 : -26), new Vector2(size.x - 25, index == 1 ? 80 : 200));
+        }
+
+        private TMP_Text StatChip(Transform parent, string glyph, Vector2 position, int color)
+        {
+            RectTransform chip = Rect(parent, "Stat " + glyph, position, new Vector2(95, 38));
+            Color[] colors = { new Color(0.24f, 0.49f, 0.42f), new Color(0.48f, 0.38f, 0.2f), new Color(0.27f, 0.36f, 0.5f), new Color(0.45f, 0.3f, 0.43f) };
+            RectTransform icon = Panel(chip, "Icon", new Vector2(-29, 0), new Vector2(30, 30), colors[color % 4]);
+            icon.GetComponent<Image>().raycastTarget = false;
+            Text(icon, "Symbol", glyph, Vector2.zero, new Vector2(29, 29), 19);
+            return Text(chip, "Value", "0", new Vector2(20, 0), new Vector2(58, 36), 24);
         }
 
         private void Update()
         {
-            if (Game == null || IsAnimating) return;
+            if (Game == null || IsAnimating || IsAiRunning) return;
+            if (IsLabPanelOpen || IsCardPickerOpen)
+            {
+                if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) { CloseCardPicker(); CloseLabPanel(); }
+                return;
+            }
+            if (!IsCardLab && !IsDetailOpen && aiSettings.autoPlay && ((Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex != 0) || (Game.Phase == GamePhase.RewardChoice && Game.RewardPlayerIndex != 0)))
+            { StartCoroutine(RunAi()); return; }
             Keyboard keys = Keyboard.current;
             if (IsDetailOpen)
             {
@@ -199,18 +242,19 @@ namespace Pilgrimage.UI
 
         public void ToggleDetail()
         {
-            if (IsAnimating) return;
+            if (IsAnimating || IsAiRunning) return;
             if (IsDetailOpen) { CloseDetail(); return; }
             CardView view = handViews.FirstOrDefault(v => v.Card.InstanceId == SelectedCardId);
             if (view == null) { Feedback("먼저 카드를 선택하세요."); return; }
             CardDefinition def = view.Card.Definition;
-            string cost = def.CostText + (def.Id == CardId.AggressiveMission ? $" (현재 대상: {Game.EffectiveCost(def, targetPlayer)})" : "");
-            OpenDetail($"<size=38><b>{def.Name}</b></size>\n#{(int)def.Id + 1:00} · {def.Category} · {def.Faction}\n개별 ID: {view.Card.InstanceId}\n\n헌금 코스트: {cost}\n\n효과\n{def.Description}\n\n사용 조건: {def.Conditions}\n대상: {def.Target} {(def.Target == TargetKind.Self ? "" : "— 중앙 대상 변경 버튼으로 선택")}\n\n구현 상태: {def.Implementation}\n{(!def.IsPlayable ? "현재 사용 불가" : "현재 세션의 비용·대상 조건을 만족해야 사용 가능")}\n\n<i>{def.FlavorText}</i>");
+            OpenDetail(CardPresentation.Detail(def));
         }
 
         private void OpenDetail(string text)
         {
             grantDebugButton.gameObject.SetActive(false);
+            debugButton.gameObject.SetActive(false); manualAiButton.gameObject.SetActive(false);
+            text = CardPresentation.PlayerText(text);
             detailText.text = text;
             detailText.rectTransform.sizeDelta = new Vector2(1090, Mathf.Max(700, detailText.GetPreferredValues(text, 1090, 0).y + 25));
             var content = (RectTransform)detailText.transform.parent;
@@ -226,8 +270,20 @@ namespace Pilgrimage.UI
         {
             if (!CanInteract || !SelectedCardId.HasValue) return;
             Guid id = SelectedCardId.Value;
-            if (!Game.TryPlay(0, id, out string message, new EffectTarget { PlayerIndex = targetPlayer })) { Feedback(message); return; }
+            if (Game.Players[0].Hand.FirstOrDefault(c => c.InstanceId == id)?.Definition.Id == CardId.Edict)
+            { OpenRemovalPicker(id); return; }
+            ExecutePlayerCard(id, new EffectTarget { PlayerIndex = targetPlayer });
+        }
+
+        private void ExecutePlayerCard(Guid id, EffectTarget target)
+        {
+            CardDefinition definition = Game.Players[0].Hand.FirstOrDefault(c => c.InstanceId == id)?.Definition;
+            int beforeOffering = Game.Players[0].Offering, beforeFollowers = Game.Players[0].FollowerCount;
+            int beforeFaith = Game.Players[0].Faith, beforeDoctrine = Game.Players[0].Doctrine;
+            if (!Game.TryPlay(0, id, out string message, target)) { Feedback(message); return; }
             Log(message);
+            Reveal(definition, false, id);
+            ShowResult(0, beforeOffering, beforeFollowers, beforeFaith, beforeDoctrine);
             CardView view = handViews.FirstOrDefault(v => v.Card.InstanceId == id);
             StartCoroutine(ReleaseCard(view));
         }
@@ -235,7 +291,7 @@ namespace Pilgrimage.UI
         private IEnumerator ReleaseCard(CardView view)
         {
             IsAnimating = true;
-            endButton.interactable = false; debugButton.interactable = false;
+            endButton.interactable = false;
             if (view != null)
             {
                 var group = view.gameObject.AddComponent<CanvasGroup>(); group.blocksRaycasts = false;
@@ -262,15 +318,24 @@ namespace Pilgrimage.UI
             {
                 PlayerState p = Game.Players[i];
                 string marker = Game.Phase == GamePhase.Actions && i == Game.ActivePlayerIndex ? "▶ " : "";
-                playerLabels[i].text = $"{marker}{p.Name}{(i == 0 ? " · 나" : " · 테스트 플레이어")}\n헌금 {p.Offering}  ·  신도 {p.FollowerCount}  ·  보유 {p.TotalCardCount}장  ·  손패 {p.Hand.Count}장";
-                if (i >= 2) playerLabels[i].text = $"{marker}{p.Name}\n테스트 플레이어\n헌금 {p.Offering} · 신도 {p.FollowerCount}\n보유 {p.TotalCardCount}장 · 손패 {p.Hand.Count}장";
+                playerLabels[i].text = marker + p.Name;
+                if (i > 0)
+                {
+                    opponentStats[i - 1, 0].text = p.FollowerCount.ToString();
+                    opponentStats[i - 1, 1].text = p.Offering.ToString();
+                    opponentStats[i - 1, 2].text = p.Hand.Count.ToString();
+                }
+                else
+                {
+                    int[] values = { p.Offering, p.Faith, p.Doctrine, p.FollowerCount };
+                    for (int stat = 0; stat < 4; stat++) ownStats[stat].text = values[stat].ToString();
+                }
                 if (i > 0) RefreshBacks(i);
             }
-            roundText.text = $"라운드 {Game.Round} / 40  ·  무신론자 {Game.Atheists}  ·  선플레이어 {Game.Players[Game.FirstPlayerIndex].Name}";
-            messageText.text = Game.Phase == GamePhase.Actions ? $"현재 행동: {Game.Players[Game.ActivePlayerIndex].Name} · 순차 즉시 실행 (임시)" : Game.LastMessage;
-            targetLabel.text = "효과 대상: " + Game.Players[targetPlayer].Name;
-            endButton.interactable = !IsAnimating && Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0;
-            debugButton.interactable = !IsAnimating && Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex != 0;
+            roundText.text = $"ROUND {Game.Round:00} / 40     무신론자 {Game.Atheists}";
+            activeText.text = Game.Phase == GamePhase.Actions ? Game.Players[Game.ActivePlayerIndex].Name + (Game.ActivePlayerIndex == 0 ? "\n내 차례" : "\nAI 차례") : Game.Phase == GamePhase.RewardChoice ? "보상 선택" : "게임 종료";
+            if (Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0) targetLabel.text = Game.Players[targetPlayer].Name;
+            endButton.interactable = !IsAnimating && !IsAiRunning && Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0;
             foreach (CardView view in handViews) { view.gameObject.SetActive(false); Destroy(view.gameObject); }
             handViews.Clear();
             for (int i = 0; i < Game.Players[0].Hand.Count; i++)
@@ -283,6 +348,7 @@ namespace Pilgrimage.UI
             if (SelectedCardId.HasValue && !handViews.Any(v => v.Card.InstanceId == SelectedCardId)) SelectedCardId = null;
             ApplySelection();
             BuildRewards();
+            if (IsLabPanelOpen) RefreshLabLibrary();
         }
 
         private void RefreshBacks(int playerIndex)
@@ -306,20 +372,28 @@ namespace Pilgrimage.UI
         private void BuildRewards()
         {
             foreach (Transform child in rewardRoot) { child.gameObject.SetActive(false); Destroy(child.gameObject); }
-            rewardRoot.gameObject.SetActive(Game.Phase == GamePhase.RewardChoice);
+            rewardRoot.gameObject.SetActive(Game.Phase == GamePhase.RewardChoice && (Game.RewardPlayerIndex == 0 || !aiSettings.autoPlay));
             if (!rewardRoot.gameObject.activeSelf) return;
             rewardRoot.SetAsLastSibling();
             int player = Game.RewardPlayerIndex;
-            Text(rewardRoot, "Reward Title", $"{Game.Round}라운드 보상 · {Game.Players[player].Name}\n{Game.CurrentRewardKind} 카드 1장 선택 (테스트 플레이어도 수동 선택)", new Vector2(0, 190), new Vector2(1070, 90), 25);
+            Text(rewardRoot, "Reward Title", $"{Game.Players[player].Name} · 보상 1장 선택", new Vector2(0, 210), new Vector2(1070, 55), 25);
+            RectTransform viewport = Panel(rewardRoot, "Reward Scroll", new Vector2(0, -8), new Vector2(1080, 355), Color.clear);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            ScrollRect scroll = viewport.gameObject.AddComponent<ScrollRect>(); scroll.horizontal = false;
             var options = Game.RewardOptions();
+            RectTransform content = Rect(viewport, "Reward Content", Vector2.zero, new Vector2(1080, Mathf.Max(355, Mathf.Ceil(options.Count / 4f) * 110)));
+            content.anchorMin = content.anchorMax = new Vector2(0.5f, 1); content.pivot = new Vector2(0.5f, 1); content.anchoredPosition = Vector2.zero;
+            scroll.viewport = viewport; scroll.content = content;
             for (int i = 0; i < options.Count; i++)
             {
                 CardDefinition def = options[i];
                 int row = i / 4, col = i % 4;
-                Button(rewardRoot, def.Name + (!def.IsPlayable ? "\n사용 불가 / 미구현" : "") + "\n" + def.CostText,
-                    new Vector2(-405 + col * 270, 55 - row * 125), new Vector2(250, 110), () => { if (IsAnimating) return; Game.ChooseReward(player, def.Id); Log(Game.LastMessage); Refresh(); });
+                Button choiceButton = Button(content, CardPresentation.PlayerText(def.Name) + (CardPresentation.Availability(def) == "" ? "" : "\n사용 불가") + "\n" + CardPresentation.CostLabel(def),
+                    new Vector2(-405 + col * 270, -55 - row * 110), new Vector2(250, 96), () => { if (IsAnimating || IsAiRunning) return; Game.ChooseReward(player, def.Id); Log(Game.LastMessage); Refresh(); });
+                var choiceRect = (RectTransform)choiceButton.transform;
+                choiceRect.anchorMin = choiceRect.anchorMax = new Vector2(0.5f, 1);
             }
-            Text(rewardRoot, "Reward Note", "획득 위치는 Demo Settings의 임시 설정입니다. 미구현 카드도 획득할 수 있으나 사용할 수 없습니다.", new Vector2(0, -215), new Vector2(1070, 50), 19);
+            Text(rewardRoot, "Reward Note", "스크롤하여 선택 · 사용 불가 카드는 획득 후에도 사용할 수 없습니다", new Vector2(0, -215), new Vector2(1070, 40), 18);
             if (options.Count == 0)
                 Button(rewardRoot, "명세 미등록 보상권 보류 (테스트)", Vector2.zero, new Vector2(750, 70), () => { Game.DeferMissingReward(player); Refresh(); });
         }
@@ -332,21 +406,90 @@ namespace Pilgrimage.UI
 
         public void DebugOpponentStep()
         {
-            if (!CanInteract || Game.Phase != GamePhase.Actions || Game.ActivePlayerIndex == 0) return;
-            int actor = Game.ActivePlayerIndex;
-            foreach (CardInstance card in Game.Players[actor].Hand.ToArray())
+            if (IsCardLab || !CanInteract || Game.Phase != GamePhase.Actions || Game.ActivePlayerIndex == 0) return;
+            StartCoroutine(RunAi());
+        }
+
+        private IEnumerator RunAi()
+        {
+            if (IsAiRunning) yield break;
+            IsAiRunning = true;
+            try
             {
-                if (!Game.TryPlay(actor, card.InstanceId, out string message, new EffectTarget { PlayerIndex = (actor + 1) % 4 })) continue;
-                Log(message); break;
+                if (Game.Phase == GamePhase.RewardChoice)
+                {
+                    int owner = Game.RewardPlayerIndex;
+                    if (owner == 0) yield break;
+                    CardDefinition choice = aiPlayers[owner].ChooseReward(new AiObservation(Game, owner), Game.RewardOptions());
+                    if (choice != null)
+                    {
+                        Game.ChooseReward(owner, choice.Id);
+                        Feedback(Game.Players[owner].Name + "\n보상: " + choice.Name);
+                        Log(Game.LastMessage);
+                    }
+                    else if (Game.RewardOptions().Count == 0) Game.DeferMissingReward(owner);
+                    else Game.ChooseReward(owner, Game.RewardOptions()[0].Id); // Acquisition only; never execute an unimplemented effect.
+                    Refresh();
+                    yield return new WaitForSecondsRealtime(Mathf.Clamp(aiSettings.revealInterval, 0.1f, 10));
+                    yield break;
+                }
+                int actor = Game.ActivePlayerIndex;
+                if (actor == 0 || Game.Phase != GamePhase.Actions) yield break;
+                var turn = new AiTurn(Game, actor, aiPlayers[actor], aiSettings);
+                for (AiDecision decision = turn.Next(Game); decision != null; decision = turn.Next(Game))
+                {
+                    Reveal(decision.Definition, true, decision.CardInstanceId);
+                    targetLabel.text = decision.Definition.Target == TargetKind.Self ? "" : Game.Players[decision.Target.PlayerIndex].Name;
+                    float travel = Mathf.Clamp(aiSettings.travelDuration, 0.05f, 2);
+                    float interval = Mathf.Clamp(aiSettings.revealInterval, 0.1f, 10);
+                    Vector2 start = actor == 1 ? new Vector2(0, 211) : actor == 2 ? new Vector2(-755, -19) : new Vector2(755, -19);
+                    for (float t = 0; t < travel; t += Time.unscaledDeltaTime)
+                    {
+                        revealedCard.anchoredPosition = Vector2.Lerp(start, new Vector2(0, 6), t / travel);
+                        revealedCard.localScale = Vector3.one * Mathf.Lerp(0.45f, 1, t / travel);
+                        yield return null;
+                    }
+                    revealedCard.anchoredPosition = new Vector2(0, 6); revealedCard.localScale = Vector3.one;
+                    int offering = Game.Players[actor].Offering, followers = Game.Players[actor].FollowerCount;
+                    int faith = Game.Players[actor].Faith, doctrine = Game.Players[actor].Doctrine;
+                    if (Game.TryPlay(actor, decision.CardInstanceId, out string message, decision.Target))
+                    { Log(message); ShowResult(actor, offering, followers, faith, doctrine); }
+                    else Feedback(message);
+                    Refresh();
+                    yield return new WaitForSecondsRealtime(Mathf.Max(0.05f, interval - travel));
+                }
+                Game.EndActionTurn(actor); Log(Game.LastMessage);
             }
-            Game.EndActionTurn(actor); Log(Game.LastMessage); Refresh();
+            finally { IsAiRunning = false; if (isActiveAndEnabled) Refresh(); }
+        }
+
+        private void Reveal(CardDefinition definition, bool ai, Guid instanceId)
+        {
+            if (definition == null) return;
+            RevealedAiCard = ai ? definition : null;
+            RevealedCardInstanceId = instanceId;
+            revealedCard.gameObject.SetActive(true);
+            revealedCard.anchoredPosition = new Vector2(0, 6); revealedCard.localScale = Vector3.one;
+            revealedCard.GetComponent<Image>().color = CardView.CategoryColor(definition.Category);
+            revealedNumber.text = $"#{(int)definition.Id + 1:00}"; revealedName.text = definition.Name;
+        }
+        private void ShowResult(int actor, int offering, int followers, int faith, int doctrine)
+        {
+            PlayerState player = Game.Players[actor];
+            var changes = new List<string>();
+            if (offering != player.Offering) changes.Add($"헌금 {player.Offering - offering:+#;-#;0}");
+            if (followers != player.FollowerCount) changes.Add($"신도 {player.FollowerCount - followers:+#;-#;0}");
+            if (faith != player.Faith) changes.Add($"신앙 {player.Faith - faith:+#;-#;0}");
+            if (doctrine != player.Doctrine) changes.Add($"교리 {player.Doctrine - doctrine:+#;-#;0}");
+            Feedback(changes.Count == 0 ? "효과 적용" : string.Join(" · ", changes));
         }
 
         private void ResetGame()
         {
             if (!CanInteract) return;
-            Game = new GameSession(settings != null ? settings.assumptions : null);
-            SelectedCardId = null; logs.Clear(); logText.text = ""; Refresh();
+            Game = IsCardLab ? GameDebugTools.CreateCardLab() : new GameSession(settings != null ? settings.assumptions : null);
+            aiPlayers = Enumerable.Range(0, 4).Select(i => new RuleBasedAi(aiSettings, i)).ToArray();
+            SelectedCardId = null; RevealedAiCard = null; RevealedCardInstanceId = null; revealedCard.gameObject.SetActive(false); logs.Clear(); logText.text = ""; messageText.text = ""; Refresh();
         }
         private void CycleTarget() { if (!CanInteract) return; targetPlayer = targetPlayer % 3 + 1; targetLabel.text = "효과 대상: " + Game.Players[targetPlayer].Name; }
         private void ShowPlayerStats(int index)
@@ -358,18 +501,22 @@ namespace Pilgrimage.UI
         private void ShowCatalog()
         {
             if (!CanInteract) return;
-            OpenDetail("<size=36>카드 데이터 26종</size>\n\n" + string.Join("\n\n", Game.Catalog.Select(c => $"<b>{c.Name}</b> · {c.CostText} · {c.Faction} · {c.Implementation}\n{c.Description}\n<i>{c.FlavorText}</i>")));
-            grantDebugButton.gameObject.SetActive(true);
+            OpenDetail($"<size=36>카드 도감 · {Game.Catalog.Count}종</size>\n\n" + string.Join("\n\n────────\n\n", Game.Catalog.Select(CardPresentation.Detail)));
+            grantDebugButton.gameObject.SetActive(DevelopmentToolsAvailable);
         }
         private void GrantAllForDebug()
         {
-            if (IsAnimating) return;
-            foreach (CardDefinition card in Game.Catalog) GameDebugTools.GiveCard(Game, 0, card.Id);
-            GameDebugTools.SetResources(Game, 0, 50, 80, 80, 20);
-            CloseDetail(); Log("디버그: 내 손패에 26종 각 1장 추가, 헌금 50·신앙/교리 80·교회 재산 20 설정. 정규 획득 규칙이 아닙니다."); Refresh();
+            if (IsAnimating || IsAiRunning || !DevelopmentToolsAvailable) return;
+            CloseDetail(); EnterCardLab(); OpenLabPanel();
         }
-        private void Feedback(string text) { messageText.text = text; }
-        private void Log(string text) { logs.Add(text); if (logs.Count > 2) logs.RemoveAt(0); logText.text = string.Join("\n", logs); }
+        private void ShowMenu()
+        {
+            if (!CanInteract) return;
+            OpenDetail("<size=36>메뉴 · 조작 안내</size>\n\n← / → : 카드 선택\nSpace / 우클릭 : 상세보기\nEnter / 더블클릭 : 사용\nESC : 닫기\n\n금($): 헌금 · 믿: 신앙심 · 율: 교리 정합성 · 人: 신도 · 패: 손패\n\nAI 가중치와 공개 간격은 Demo Settings에서 변경합니다.\n\n최근 기록\n" + string.Join("\n", logs));
+            debugButton.gameObject.SetActive(true); manualAiButton.gameObject.SetActive(true);
+        }
+        private void Feedback(string text) { string visible = CardPresentation.PlayerText(text); messageText.text = string.IsNullOrWhiteSpace(visible) ? "현재 진행할 수 없습니다." : visible; }
+        private void Log(string text) { logs.Add(text); if (logs.Count > 12) logs.RemoveAt(0); logText.text = ""; }
 
         public Sprite FrameSprite(CardCategory category)
         {
@@ -395,9 +542,10 @@ namespace Pilgrimage.UI
         }
         private Button Button(Transform parent, string label, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction action)
         {
-            RectTransform rect = Panel(parent, label, position, size, new Color(0.15f, 0.31f, 0.37f));
+            RectTransform rect = Panel(parent, label, position, size, new Color(0.13f, 0.3f, 0.31f));
             var button = rect.gameObject.AddComponent<Button>(); button.targetGraphic = rect.GetComponent<Image>();
             button.navigation = new Navigation { mode = Navigation.Mode.None };
+            ColorBlock colors = button.colors; colors.highlightedColor = new Color(0.7f, 1, 0.85f); colors.pressedColor = new Color(0.45f, 0.8f, 0.65f); button.colors = colors;
             button.onClick.AddListener(action);
             Text(rect, "Label", label, Vector2.zero, size - new Vector2(12, 4), 20);
             return button;
@@ -412,5 +560,7 @@ namespace Pilgrimage.UI
                 Destroy(font);
             }
         }
+        private void OnDisable() { StopAllCoroutines(); IsAiRunning = false; IsAnimating = false; }
+        private void OnEnable() { if (Game != null && root != null) Refresh(); }
     }
 }

@@ -5,11 +5,12 @@ Only the catalog data file is written. Original effect/flavor wording is retaine
 Execution status and numeric payloads are explicit mappings reviewed in code.
 """
 from pathlib import Path
+import sys
 import json
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / 'Docs/Pilgrimage_Game_Design_Latest.md'
+SOURCE = ROOT / 'Docs/Pilgrimage_Game_Design_2026-11-14.md'
 DEST = ROOT / 'Assets/Scripts/Pilgrimage/Cards/CardCatalogData.cs'
 IDS = {
     '신도': 'Follower', '포교': 'Evangelism', '헌금 요구': 'RequestOffering',
@@ -18,12 +19,17 @@ IDS = {
     '공격적 선교': 'AggressiveMission', '빈민 구휼': 'PoorRelief',
     '구세군 모금': 'SalvationFundraising', '자선냄비': 'CharityPot',
     '누추한 성전': 'HumbleTemple', '십일조': 'Tithe', '이자': 'Interest',
-    '면죄부': 'Indulgence', '성전 리모델링': 'TempleRemodeling', '교황': 'Pope',
+    '면죄부': 'Indulgence', '성전 리모델링': 'TempleRemodeling', '대주교': 'Archbishop',
     '이단 심문관': 'Inquisitor', '성서무오론': 'Inerrancy', '고해성사': 'Confession',
     '신실한 신도': 'FaithfulFollower', '털갈이 의식': 'MoltingRitual',
     '깊은 숲의 성역': 'DeepForestSanctuary', '야성의 포효': 'WildRoar',
+    '포고령': 'Edict', '설파': 'Preaching', '신앙의 결속': 'BondOfFaith',
+    '고행': 'Penance', '고독한 성찰': 'SolitaryReflection', '대상단 투자': 'CaravanInvestment',
+    '마녀사냥': 'WitchHunt', '한 줌의 희망': 'GlimmerOfHope', '거짓 계시': 'FalseRevelation',
+    '축복': 'Blessing', '그곳이 터져 죽습니다': 'ReturnToFaith', '낙원': 'Paradise',
 }
-PENDING = {'HumbleTemple', 'TempleRemodeling', 'Pope'}
+PENDING = {'HumbleTemple', 'TempleRemodeling', 'Archbishop',
+           'Penance', 'SolitaryReflection', 'CaravanInvestment', 'WitchHunt'}
 BASIC = {
     'Evangelism': 'faithChange: -2, atheistChange: -2, followersToDeck: 2',
     'RequestOffering': 'offeringGain: 2, faithChange: -5, doctrineChange: -5',
@@ -32,8 +38,12 @@ BASIC = {
     'Tithe': 'offeringGain: 1, churchPropertyChange: 2',
     'Inerrancy': 'doctrineChange: 15', 'Confession': 'faithChange: 20, doctrineChange: 20',
     'Indulgence': 'offeringGain: 6, churchPropertyChange: 6, faithChange: -10, doctrineChange: -10',
+    'Preaching': 'doctrineChange: 10', 'BondOfFaith': 'faithChange: 10, doctrineChange: 10',
+    'GlimmerOfHope': 'offeringGain: 5', 'ReturnToFaith': 'faithChange: 10',
+    'Paradise': 'faithChange: 15, doctrineChange: 15',
 }
-TARGETS = {'PublicDenunciation', 'Reaper', 'AggressiveMission', 'PoorRelief'}
+TARGETS = {'PublicDenunciation', 'Reaper', 'AggressiveMission', 'PoorRelief', 'BondOfFaith', 'FalseRevelation'}
+SPECIAL = {'Preaching', 'BondOfFaith', 'GlimmerOfHope', 'ReturnToFaith', 'Paradise'}
 
 
 def quoted(value):
@@ -48,8 +58,8 @@ def main():
         elif line.startswith('### 돈너무'): faction = 'Gold'
         elif line.startswith('### 교리너무'): faction = 'Discipline'
         elif line.startswith('### 퍼리'): faction = 'Fur'
-        if not line.startswith('- ') or not ('｜' in line or '|' in line): continue
-        plain = line[2:].replace('**', '')
+        if not re.match(r'^(?:- |\d+\. )', line) or not ('｜' in line or '|' in line): continue
+        plain = re.sub(r'^(?:- |\d+\. )', '', line).replace('**', '')
         content, flavor = re.split(r'[｜|]', plain, maxsplit=1)
         match = re.match(r'\s*(.+?)(?:\((헌금 [^)]+)\))?\s*[:：]\s*(.*)', content)
         if not match or match[1].strip() not in IDS: continue
@@ -60,21 +70,28 @@ def main():
         passive = card_id in {'Follower', 'FaithfulFollower'}
         status = 'NotImplemented' if card_id in PENDING else 'Implemented'
         conditions = '사용 불가' if passive else '자신의 신앙심이 70 이상' if card_id == 'WildRoar' else '원문에 추가 사용 조건 없음'
+        if card_id == 'GlimmerOfHope': conditions = '헌금이 0일 때 발동할 수 있습니다.'
+        if card_id == 'Paradise': conditions = '자신의 신도수가 20명 이상일 때 발동할 수 있습니다.'
         args = [f'CardId.{card_id}', quoted(name), quoted(effect), str(cost), str(not passive and card_id not in PENDING).lower(),
                 f'category: CardCategory.{category}', f'faction: FactionId.{faction}',
                 f'implementation: EffectImplementation.{status}', f'conditions: {quoted(conditions)}',
-                f'flavorText: {quoted(flavor.strip())}', f'costText: {quoted(cost_text or "원문 미명시")}',
-                f'effectKey: {quoted("pending" if card_id in PENDING else "basic" if card_id in BASIC or passive else card_id)}']
+                f'flavorText: {quoted(flavor.strip())}', f'costText: {quoted("" if passive else cost_text or "원문 미명시")}',
+                f'costKind: CardCostKind.{"None" if passive else "Variable" if cost_text == "헌금 X" else "Fixed" if cost >= 0 else "MissingSpecification"}',
+                f'effectKey: {quoted("pending" if card_id in PENDING else card_id if card_id in SPECIAL else "basic" if card_id in BASIC or passive else card_id)}']
         if card_id in BASIC: args.append(BASIC[card_id])
         if card_id in TARGETS: args.append('target: TargetKind.Player')
+        if card_id == 'Edict': args.append('target: TargetKind.Card')
         if card_id == 'FaithfulFollower': args.extend(['countsAsFollower: true', 'protectedFromCardEffects: true'])
         if card_id == 'TempleRemodeling': args.append('churchPropertyChange: -4')
         rows.append(f'            {{ CardId.{card_id}, new CardDefinition(' + ',\n                '.join(args) + ') },')
-    assert len(rows) == 26, f'Expected 26 cards; parsed {len(rows)}'
-    output = '// Generated by Tools/import_card_design.py from Docs/Pilgrimage_Game_Design_Latest.md\nusing System.Collections.Generic;\n\nnamespace Pilgrimage\n{\n    internal static class CardCatalogData\n    {\n        internal static Dictionary<CardId, CardDefinition> Create() => new Dictionary<CardId, CardDefinition>\n        {\n'
+    assert len(rows) == 38, f'Expected 38 cards; parsed {len(rows)}'
+    output = '// Generated by Tools/import_card_design.py from Docs/Pilgrimage_Game_Design_2026-11-14.md\nusing System.Collections.Generic;\n\nnamespace Pilgrimage\n{\n    internal static class CardCatalogData\n    {\n        internal static Dictionary<CardId, CardDefinition> Create() => new Dictionary<CardId, CardDefinition>\n        {\n'
     output += '\n'.join(rows) + '\n        };\n    }\n}\n'
-    DEST.write_text(output, encoding='utf-8')
-    print(f'Registered {len(rows)} cards. Duration-dependent effects pending: {len(PENDING)}.')
+    if '--check' in sys.argv:
+        assert DEST.read_text(encoding='utf-8') == output, 'Card catalog differs from latest design/importer. Regenerate it.'
+    else:
+        DEST.write_text(output, encoding='utf-8')
+    print(f'Registered {len(rows)} cards. Unimplemented effects: {len(PENDING)}.')
 
 
 if __name__ == '__main__': main()

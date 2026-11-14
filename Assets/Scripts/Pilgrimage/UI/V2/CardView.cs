@@ -41,10 +41,12 @@ namespace Pilgrimage.UI
             icon.GetComponent<Image>().raycastTarget = false;
             if (owner.Illustration != null) { icon.GetComponent<Image>().sprite = owner.Illustration; icon.GetComponent<Image>().color = Color.white; }
             else owner.Text(icon, "Placeholder Icon", def.CountsAsFollower ? "人" : "+", Vector2.zero, new Vector2(140, 75), 48);
-            owner.Text(frame, "Category", def.Category.ToString(), new Vector2(0, -57), new Vector2(175, 28), 17);
-            owner.Text(frame, "Cost", def.CostText, new Vector2(0, -88), new Vector2(177, 30), 20);
-            string state = !def.IsPlayable ? def.Implementation == EffectImplementation.Implemented ? "사용 불가" : "효과 미구현" : "우클릭 상세 · 두 번 클릭 사용";
-            owner.Text(frame, "Play State", state, new Vector2(0, -116), new Vector2(180, 24), 13);
+            if (!(def.CountsAsFollower && def.CostKind == CardCostKind.None))
+            {
+                owner.Text(frame, "Category", def.Category == CardCategory.Faction ? "교단" : def.Category == CardCategory.Heretic ? "이단" : "일반", new Vector2(0, -57), new Vector2(175, 28), 17);
+                if (CardPresentation.CostLabel(def) != "") owner.Text(frame, "Cost", CardPresentation.CostLabel(def), new Vector2(0, -88), new Vector2(177, 30), 20);
+                if (CardPresentation.Availability(def) != "") owner.Text(frame, "Play State", "사용 불가", new Vector2(0, -116), new Vector2(180, 24), 13);
+            }
             FanSlot slot = HandFanLayout.Calculate(index, owner.Game.Players[0].Hand.Count, width, 200);
             restPosition = new Vector2(slot.X, slot.Y);
             restAngle = slot.Angle;

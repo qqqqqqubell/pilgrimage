@@ -21,10 +21,28 @@ namespace Pilgrimage
             int owner = actor;
             switch (card.Definition.Id)
             {
+                case CardId.Edict:
+                    var removal = game.FindCard(target.CardInstanceId);
+                    if (removal == null || removal.Owner != actor || target.PlayerIndex != actor ||
+                        (removal.Pile != CardPile.Hand && removal.Pile != CardPile.Deck) ||
+                        removal.Card.InstanceId == card.InstanceId || removal.Card.Definition.ProtectedFromCardEffects)
+                    { reason = "자신의 손패 또는 덱에서 제거할 수 있는 다른 카드 한 장을 선택하세요."; return false; }
+                    break;
                 case CardId.PublicDenunciation: case CardId.AggressiveMission: required = 1; owner = target.PlayerIndex; break;
                 case CardId.Reaper: required = 2; owner = target.PlayerIndex; break;
                 case CardId.PoorRelief: required = game.Players[target.PlayerIndex].Faith <= 20 ? 3 : 2; owner = target.PlayerIndex; break;
                 case CardId.Indulgence: case CardId.MoltingRitual: required = 2; break;
+                case CardId.BondOfFaith: required = 1; break;
+                case CardId.Blessing:
+                    if (game.RequireFullFollowerTargets && game.Players[actor].Deck.Count(c => c.Definition.CountsAsFollower) < 2)
+                    { reason = "덱의 신도가 부족합니다."; return false; }
+                    break;
+                case CardId.GlimmerOfHope:
+                    if (game.Players[actor].Offering != 0) { reason = "헌금이 0이어야 합니다."; return false; }
+                    break;
+                case CardId.Paradise:
+                    if (game.Players[actor].FollowerCount < 20) { reason = "신도 20명 이상이어야 합니다."; return false; }
+                    break;
                 case CardId.WildRoar:
                     if (game.Players[actor].Faith < 70) { reason = "신앙심 70 이상이어야 합니다."; return false; }
                     if (game.RequiresAtheists && game.Atheists < 3) { reason = "무신론자가 부족합니다. (임시 사용 조건)"; return false; }
@@ -45,6 +63,30 @@ namespace Pilgrimage
             context.ApplyBasic();
             switch (id)
             {
+                case CardId.Edict:
+                    game.RemoveCard(context.Target.CardInstanceId);
+                    break;
+                case CardId.Preaching:
+                    player.MutableDeck.Add(new CardInstance(CardId.Evangelism));
+                    break;
+                case CardId.BondOfFaith:
+                    var gift = EligibleFollowers(player.Deck).FirstOrDefault();
+                    if (gift != null) game.Transfer(gift.InstanceId, context.Target.PlayerIndex, CardPile.Deck);
+                    break;
+                case CardId.FalseRevelation:
+                    var victim = game.Players[context.Target.PlayerIndex];
+                    int beforeFaith = victim.Faith, beforeDoctrine = victim.Doctrine;
+                    CardEffectResolver.ApplyBasic(victim, new CardDefinition(id, "", "", 0, true, faithChange: -10, doctrineChange: -10), game.Atheists, true, true, true, false);
+                    if ((victim.Faith < beforeFaith && victim.Faith <= 30) || (victim.Doctrine < beforeDoctrine && victim.Doctrine <= 30)) player.Offering++;
+                    break;
+                case CardId.Blessing:
+                    foreach (var drawn in player.Deck.Where(c => c.Definition.CountsAsFollower).Take(2).ToArray())
+                        game.Transfer(drawn.InstanceId, actor, CardPile.Hand);
+                    break;
+                case CardId.ReturnToFaith:
+                    foreach (var returned in player.Deck.Where(c => c.Definition.Id == CardId.Heretic).Take(2).ToArray())
+                        game.Transform(returned.InstanceId, CardCatalog.Get(CardId.Follower));
+                    break;
                 case CardId.ClergyTraining:
                     for (int i = 0; i < 2; i++) player.MutableDeck.Add(new CardInstance(CardId.Evangelism));
                     break;

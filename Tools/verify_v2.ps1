@@ -38,7 +38,7 @@ using NUnit.Framework;
 public static class ValidationRunner {
   public static int Main() {
     int passed = 0, failed = 0;
-    foreach (Type fixture in new[] { typeof(Pilgrimage.Tests.CardPrototypeTests), typeof(Pilgrimage.Tests.GameSessionTests) }) {
+    foreach (Type fixture in new[] { typeof(Pilgrimage.Tests.CardPrototypeTests), typeof(Pilgrimage.Tests.GameSessionTests), typeof(Pilgrimage.Tests.AiStrategyTests) }) {
       object instance = Activator.CreateInstance(fixture);
       foreach (MethodInfo test in fixture.GetMethods()) {
         if (!Attribute.IsDefined(test, typeof(TestAttribute))) continue;
