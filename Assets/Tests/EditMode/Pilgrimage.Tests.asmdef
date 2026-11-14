@@ -1,0 +1,6 @@
+{
+  "name": "Pilgrimage.Tests",
+  "references": ["Pilgrimage.Runtime"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}
