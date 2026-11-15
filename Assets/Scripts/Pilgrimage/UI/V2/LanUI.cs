@@ -116,7 +116,7 @@ namespace Pilgrimage.UI
         private void ReturnFromLan(string reason)
         {
             if (Network != null) { Network.Changed -= OnLanChanged; Network.Closed -= ReturnFromLan; Destroy(Network); Network = null; }
-            StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false;
+            StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false; SetEndLabel("행동 종료");
             Game = null; LanView = null; IsLanMode = false; LanError = reason; SelectedCardId = null; displayedReveal = 0;
             CloseCardPicker(); CloseDetail(); CloseLabPanel(); rewardRoot.gameObject.SetActive(false); revealedCard.gameObject.SetActive(false);
             RevealedCardInstanceId = null; RevealedAiCard = null;
@@ -188,7 +188,7 @@ namespace Pilgrimage.UI
             activeText.text=LanView.phase==GamePhase.Finished?"승리\n"+string.Join(" · ",LanView.winners.Select(i=>LanView.players[i].name)):LanView.phase==GamePhase.RewardChoice?"카드 획득 결과":LanView.players[LanView.activePlayer].name+(LanView.activePlayer==LocalSeat?"\n내 차례":LanView.players[LanView.activePlayer].ai?"\nAI 차례":"\n상대 차례");
             activeText.enableAutoSizing=true; activeText.fontSizeMin=14;activeText.fontSizeMax=26;
             targetLabel.text=LanView.players[targetPlayer].name;
-            endButton.interactable=LanCanAct;
+            UpdateLanEndButton();
             foreach(var view in handViews){view.gameObject.SetActive(false);Destroy(view.gameObject);} handViews.Clear();
             for(int i=0;i<LanView.hand.Length;i++) {
                 var card=Panel(handRoot,"My Card "+i,Vector2.zero,new Vector2(200,280),Color.black);
@@ -218,6 +218,19 @@ namespace Pilgrimage.UI
             for(int i=0;i<LanView.rewards.Length;i++) {var r=LanView.rewards[i];Text(rewardRoot,"Award "+i,LanView.players[r.owner].name+" · "+CardCatalog.Get(r.id).Name+" → "+PileName(r.destination),new Vector2(0,125-i*75),new Vector2(1050,60),24);}
             var button=Button(rewardRoot,LanView.acknowledged?"다른 참가자 확인 대기":"획득 확인 · 계속",new Vector2(0,-190),new Vector2(500,55),()=>Network.Send(new LanCommand{kind=LanCommandKind.Acknowledge})); button.interactable=!LanView.acknowledged&&!Network.Pending;
         }
+        // A disabled button gives no feedback, so the label says who the game is waiting on.
+        private void UpdateLanEndButton()
+        {
+            endButton.interactable = LanCanAct;
+            string label = "행동 종료";
+            if (LanView.phase == GamePhase.RewardChoice) label = LanView.acknowledged ? "다른 참가자 확인 대기" : "획득 확인 필요";
+            else if (LanView.phase == GamePhase.Finished) label = "게임 종료";
+            else if (LanView.activePlayer != LocalSeat) label = (LanView.players[LanView.activePlayer].ai ? "AI" : "상대") + " 차례 대기";
+            else if (LanView.busy || IsAnimating) label = "카드 처리 중";
+            else if (Network != null && Network.Pending) label = "응답 대기";
+            SetEndLabel(label);
+        }
+        private void SetEndLabel(string label) { var text = endButton != null ? endButton.GetComponentInChildren<TMP_Text>() : null; if (text != null) text.text = label; }
         private void UpdateKickStalled()
         {
             var room = Network != null && Network.IsHost ? Network.Authority : null;
@@ -248,8 +261,11 @@ namespace Pilgrimage.UI
         private void SendLanPlay(Guid source,EffectTarget target)
         {
             if(!LanCanAct)return;
-            Network.Send(new LanCommand{kind=LanCommandKind.Play,card=source.ToString("D"),target=target.PlayerIndex,targets=target.Cards.Select(id=>id.ToString("D")).ToArray()});
+            // Lock first: on the host Send() resolves synchronously and may already have refreshed the UI
+            // (e.g. "헌금이 부족합니다" rejection). Recompute afterwards instead of forcing it off.
             endButton.interactable=false;
+            Network.Send(new LanCommand{kind=LanCommandKind.Play,card=source.ToString("D"),target=target.PlayerIndex,targets=target.Cards.Select(id=>id.ToString("D")).ToArray()});
+            endButton.interactable=LanCanAct;
         }
         private void OpenLanPicker(Guid source)
         {
@@ -292,7 +308,7 @@ namespace Pilgrimage.UI
                 float travel=Mathf.Clamp(aiSettings.travelDuration,.05f,2);
                 for(float t=0;t<travel;t+=Time.unscaledDeltaTime){revealedCard.anchoredPosition=Vector2.Lerp(start,new Vector2(0,6),t/travel);revealedCard.localScale=Vector3.one*Mathf.Lerp(.45f,1,t/travel);yield return null;}
                 revealedCard.anchoredPosition=new Vector2(0,6);revealedCard.localScale=Vector3.one;
-            } finally {IsAnimating=false;if(isActiveAndEnabled&&LanView!=null)endButton.interactable=LanCanAct;}
+            } finally {IsAnimating=false;if(isActiveAndEnabled&&LanView!=null)UpdateLanEndButton();}
         }
         private void UpdateLanInput()
         {

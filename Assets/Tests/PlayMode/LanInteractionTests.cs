@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using Pilgrimage.UI;
 using TMPro;
@@ -33,6 +34,26 @@ namespace Pilgrimage.Tests
             demo.LeaveLan();yield return new WaitForSecondsRealtime(.5f);
             Assert.That(demo.IsModeSelectionOpen,Is.True);Assert.That(demo.Network,Is.Null);Assert.That(demo.IsLanMode,Is.False);
             demo.SelectSinglePlayer();Assert.That(demo.ChooseFaction(FactionId.Discipline),Is.True);
+        }
+        [UnityTest] public IEnumerator HostRejectedPlayKeepsEndTurnAvailable()
+        {
+            const BindingFlags flags=BindingFlags.NonPublic|BindingFlags.Instance;
+            demo.SelectLanMode();Assert.That(demo.OpenLan(true,"127.0.0.1",19378,"reject test","호스트"),Is.True);yield return null;
+            var net=demo.Network;var room=net.Authority;Assert.That(room.Join(99,"가짜",out _),Is.True);
+            // Remote peer without a transport connection: its commands go through the same host Process path.
+            var process=typeof(LanNetworkSession).GetMethod("Process",flags);
+            process.Invoke(net,new object[]{99UL,new LanCommand{session=room.Session,sequence=1,kind=LanCommandKind.Ready,ready=true}});
+            net.Send(new LanCommand{kind=LanCommandKind.Ready,ready=true});net.Send(new LanCommand{kind=LanCommandKind.Prepare});
+            net.Send(new LanCommand{kind=LanCommandKind.ConfirmAssignment});
+            process.Invoke(net,new object[]{99UL,new LanCommand{session=room.Session,sequence=2,kind=LanCommandKind.ConfirmAssignment,version=room.Version}});
+            Assert.That(room.Phase,Is.EqualTo(LanPhase.Playing));Assert.That(demo.LanView.activePlayer,Is.EqualTo(demo.LocalSeat));
+            var end=(Button)typeof(DemoController).GetField("endButton",flags).GetValue(demo);Assert.That(end.interactable,Is.True);
+            // Same rejection path as "헌금이 부족합니다": the host refuses the play synchronously.
+            typeof(DemoController).GetMethod("SendLanPlay",flags).Invoke(demo,new object[]{System.Guid.NewGuid(),new EffectTarget{PlayerIndex=1}});
+            Assert.That(demo.LanError,Is.Not.Empty);Assert.That(room.Busy,Is.False);Assert.That(net.Pending,Is.False);
+            Assert.That(end.interactable,Is.True,"a rejected play must not lock the end-turn button");
+            end.onClick.Invoke();Assert.That(room.Game.ActivePlayerIndex,Is.Not.EqualTo(demo.LocalSeat));
+            demo.LeaveLan();yield return new WaitForSecondsRealtime(.5f);
         }
         [UnityTest] public IEnumerator InvalidClientAddressAndPortShowErrorWithoutCreatingGame()
         {
