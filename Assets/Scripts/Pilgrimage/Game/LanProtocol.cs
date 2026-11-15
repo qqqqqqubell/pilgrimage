@@ -59,6 +59,9 @@ namespace Pilgrimage
         public int serial, actor;
         public CardId id;
         public string guid, result;
+        public bool completed, succeeded;
+        public float travelSeconds, cutInSeconds, resultSeconds;
+        public GameVisualEvent outcome;
     }
     [Serializable] public sealed class LanGameView
     {
@@ -72,6 +75,7 @@ namespace Pilgrimage
         public LanReward[] rewards;
         public int[] winners;
         public LanReveal reveal;
+        public GameVisualEvent[] events;
         public int EffectiveCost(LanCard card, int target)
         {
             // The host computes every cost with the real rules; clients never re-derive them.
@@ -109,7 +113,7 @@ namespace Pilgrimage
         public static string Fingerprint
         {
             get {
-                var rules = "pilgrimage-lan-v1|2026-11-15-final|40,4,5,3,4,2|" + string.Join("|", CardCatalog.All.OrderBy(c => c.Id)
+                var rules = "pilgrimage-lan-v2-visual-events|2026-11-15-final|40,4,5,3,4,2|" + string.Join("|", CardCatalog.All.OrderBy(c => c.Id)
                     .Select(c => (int)c.Id + ":" + c.Name + ":" + c.CostKind + ":" + c.Cost + ":" + c.Faction + ":" + c.Target + ":" + c.Implementation + ":" + c.Description + ":" + c.EffectKey));
                 using (var hash = SHA256.Create()) return BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(rules))).Replace("-", "");
             }

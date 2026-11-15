@@ -44,6 +44,7 @@ namespace Pilgrimage.Tests
     int cost=g.EffectiveCost(0,source,new EffectTarget{PlayerIndex=1}); demo.Select(source.InstanceId); Press(Key.Enter);
     if(demo.IsCardPickerOpen) { demo.ToggleCardTarget(g.SelectableCards(0,id,source.InstanceId).First().InstanceId); demo.ConfirmCardTargets(); }
     Assert.That(demo.IsAnimating,Is.True,id.ToString()); demo.PlaySelected();
+    yield return new WaitForSecondsRealtime(.2f);
     Assert.That(p.Offering,Is.EqualTo(100-cost+def.OfferingGain+(id==CardId.InterfaithLoan?-10:0)),id.ToString());
     Assert.That(g.FindCard(source.InstanceId).Pile,Is.EqualTo(CardPile.Discard)); yield return new WaitForSecondsRealtime(.4f);
     int turns=id==CardId.Penance?4:id==CardId.Archbishop?3:id==CardId.SolitaryReflection||id==CardId.InterfaithLoan?1:
@@ -65,6 +66,7 @@ namespace Pilgrimage.Tests
    var one=GameDebugTools.GiveCard(g,0,CardId.Follower); var two=GameDebugTools.GiveCard(g,0,CardId.Heretic,CardPile.Discard); demo.SendMessage("Refresh");
    demo.Select(source.InstanceId); demo.PlaySelected(); Assert.That(demo.IsCardPickerOpen,Is.True); demo.CloseCardPicker(); Assert.That(g.Players[0].Offering,Is.EqualTo(100));
    demo.PlaySelected(); demo.ToggleCardTarget(one.InstanceId); demo.ToggleCardTarget(two.InstanceId); demo.ConfirmCardTargets(); demo.ConfirmCardTargets();
+   yield return new WaitForSecondsRealtime(.2f);
    Assert.That(g.Players[0].Offering,Is.EqualTo(80)); Assert.That(g.Atheists,Is.EqualTo(102));
    Assert.That(g.FindCard(one.InstanceId).Pile,Is.EqualTo(CardPile.Removed)); Assert.That(g.FindCard(two.InstanceId).Pile,Is.EqualTo(CardPile.Removed));
    yield return new WaitForSecondsRealtime(.4f); Assert.That(demo.IsAnimating,Is.False); Assert.That(g.PopulationIsConserved,Is.True); demo.ExitCardLab();
@@ -103,6 +105,7 @@ namespace Pilgrimage.Tests
     for(int owner=0;owner<4;owner++) { GameDebugTools.GiveCard(g,owner,CardId.Follower,CardPile.Deck); GameDebugTools.GiveCard(g,owner,CardId.Follower,CardPile.Deck); }
     demo.SendMessage("Refresh"); demo.Select(reward.InstanceId); Press(Key.Enter);
     if(demo.IsCardPickerOpen) { demo.ToggleCardTarget(g.SelectableCards(0,reward.Definition.Id,reward.InstanceId).First().InstanceId); demo.ConfirmCardTargets(); }
+    yield return new WaitForSecondsRealtime(.2f);
     Assert.That(g.FindCard(reward.InstanceId).Pile,Is.EqualTo(CardPile.Discard)); yield return new WaitForSecondsRealtime(.4f);
     int round=g.Round; g.EndActionTurn(0); demo.AiConfiguration.autoPlay=true; demo.AiConfiguration.revealInterval=.1f; demo.AiConfiguration.travelDuration=.05f; demo.AiConfiguration.actionSafetyLimit=1;
     float deadline=Time.realtimeSinceStartup+40;

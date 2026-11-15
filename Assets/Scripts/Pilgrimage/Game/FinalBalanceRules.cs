@@ -62,6 +62,7 @@ namespace Pilgrimage
                 c.Category == CardCategory.Faction && c.Faction == players[owner].Faction && c.Id != CardId.FaithfulFollower && c.Id != CardId.RefusingFollower).ToList().AsReadOnly();
         private void AwardRoundRewards()
         {
+            BeginVisual(VisualCause.Reward);
             roundRewards.Clear();
             for (int offset = 0; offset < PlayerCount; offset++)
             {
@@ -74,6 +75,7 @@ namespace Pilgrimage
             }
             Phase = GamePhase.RewardChoice; // Serialized enum compatibility; this is a results acknowledgement now.
             LastMessage = Round + "라운드 종료 · 4개 교단 무작위 카드 획득";
+            FinishVisual();
         }
         public bool AcknowledgeRewards(int player = 0)
         {

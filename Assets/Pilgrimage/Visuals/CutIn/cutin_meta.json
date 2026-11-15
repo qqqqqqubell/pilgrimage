@@ -1,0 +1,197 @@
+{
+ "fps": 30,
+ "frame_count": 24,
+ "duration_sec": 0.8,
+ "frame_width": 960,
+ "frame_height": 540,
+ "columns": 4,
+ "rows": 6,
+ "order": "left-to-right, top-to-bottom",
+ "band_angle_deg": 11.0,
+ "layers_back_to_front": [
+  "dim (code, black)",
+  "cutin_bg",
+  "portrait (masked by cutin_mask)",
+  "cutin_fg"
+ ],
+ "events": {
+  "battle_pause": 0,
+  "cutin_enter": 3,
+  "flash_impact": 9,
+  "cutin_exit_skill_fire": 18,
+  "return_to_game": 24
+ },
+ "dim_alpha": [
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.65,
+  0.542,
+  0.433,
+  0.325,
+  0.217,
+  0.108,
+  0.0
+ ],
+ "portrait_offset_px_note": "Offset from band center in output-frame pixels (y up, Unity convention). Multiply by your pixels-to-units scale.",
+ "portrait": [
+  {
+   "x": 0,
+   "y": 0,
+   "scale": 1.0,
+   "visible": false
+  },
+  {
+   "x": 0,
+   "y": 0,
+   "scale": 1.0,
+   "visible": false
+  },
+  {
+   "x": 0,
+   "y": 0,
+   "scale": 1.0,
+   "visible": false
+  },
+  {
+   "x": -216.0,
+   "y": -42.0,
+   "scale": 1.08,
+   "visible": true
+  },
+  {
+   "x": -91.1,
+   "y": -17.7,
+   "scale": 1.034,
+   "visible": true
+  },
+  {
+   "x": -27.0,
+   "y": -5.2,
+   "scale": 1.01,
+   "visible": true
+  },
+  {
+   "x": -3.4,
+   "y": -0.7,
+   "scale": 1.001,
+   "visible": true
+  },
+  {
+   "x": 0.0,
+   "y": -0.0,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 0.0,
+   "y": -0.0,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": -7.5,
+   "y": 14.0,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 6.5,
+   "y": 7.9,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 17.0,
+   "y": -5.3,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 11.7,
+   "y": -1.6,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 14.7,
+   "y": 2.9,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 17.7,
+   "y": 3.4,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 20.6,
+   "y": 4.0,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 23.6,
+   "y": 4.6,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 26.5,
+   "y": 5.2,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 29.4,
+   "y": 5.7,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 46.2,
+   "y": 9.0,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 145.8,
+   "y": 28.3,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 411.0,
+   "y": 79.9,
+   "scale": 1.0,
+   "visible": true
+  },
+  {
+   "x": 0,
+   "y": 0,
+   "scale": 1.0,
+   "visible": false
+  },
+  {
+   "x": 0,
+   "y": 0,
+   "scale": 1.0,
+   "visible": false
+  }
+ ]
+}

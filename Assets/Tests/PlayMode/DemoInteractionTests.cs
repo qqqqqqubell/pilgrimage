@@ -40,6 +40,7 @@ namespace Pilgrimage.Tests
             Assert.That(demo.IsModeSelectionOpen, Is.True);
             demo.SelectSinglePlayer();
             Assert.That(demo.ChooseFaction(FactionId.Poverty), Is.True);
+            demo.AiConfiguration.presentationTimeScale = .05f;
             yield return null;
         }
         [UnityTearDown] public IEnumerator Cleanup()
@@ -111,6 +112,7 @@ namespace Pilgrimage.Tests
             ExecuteEvents.Execute(view.gameObject, click, ExecuteEvents.pointerClickHandler);
             Assert.That(demo.IsAnimating, Is.True);
             demo.PlaySelected(); // repeated input while animation is active
+            yield return new WaitForSecondsRealtime(.2f);
             Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(5));
             Assert.That(demo.Game.Players[0].Faith, Is.EqualTo(55));
             Assert.That(demo.Game.Players[0].Hand.Count, Is.EqualTo(hand - 1));
@@ -132,6 +134,7 @@ namespace Pilgrimage.Tests
             var click = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Left, clickCount = 2 };
             ExecuteEvents.Execute(view.gameObject, click, ExecuteEvents.pointerClickHandler);
             Assert.That(demo.IsAnimating, Is.True); demo.PlaySelected();
+            yield return new WaitForSecondsRealtime(.2f);
             Assert.That(player.Offering, Is.EqualTo(110)); Assert.That(player.ChurchProperty, Is.EqualTo(10));
             Assert.That(player.Faith, Is.EqualTo(40)); Assert.That(player.Doctrine, Is.EqualTo(40));
             Assert.That(player.FollowerCount, Is.EqualTo(before - 1)); Assert.That(player.TotalCardCount, Is.EqualTo(total));
@@ -223,6 +226,7 @@ namespace Pilgrimage.Tests
             var target = demo.Game.Players[0].Deck[0];
             demo.ChooseRemovalTarget(target.InstanceId); demo.ChooseRemovalTarget(target.InstanceId);
             Assert.That(demo.IsAnimating, Is.True);
+            yield return new WaitForSecondsRealtime(.2f);
             Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(80));
             Assert.That(demo.Game.FindCard(target.InstanceId).Pile, Is.EqualTo(CardPile.Removed));
             yield return new WaitForSecondsRealtime(0.4f);

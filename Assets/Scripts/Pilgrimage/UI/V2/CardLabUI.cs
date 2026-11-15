@@ -75,6 +75,7 @@ namespace Pilgrimage.UI
             if (IsCardLab) return;
             savedRegularGame = Game; savedRegularLogs = logs.ToArray();
             Game = GameDebugTools.CreateCardLab(savedRegularGame.HumanFaction); IsCardLab = true;
+            Visuals.ResetSession(Game.LastVisualEvent?.serial??0);
             SelectedCardId = null; logs.Clear(); messageText.text = "개발용 실험 세션";
             revealedCard.gameObject.SetActive(false); RevealedCardInstanceId = null; RevealedAiCard = null;
             labBadge.gameObject.SetActive(true); Refresh();
@@ -85,6 +86,7 @@ namespace Pilgrimage.UI
             if (!IsCardLab || IsAnimating || IsAiRunning) return;
             CloseCardPicker(); CloseLabPanel(); CloseDetail();
             Game = savedRegularGame; savedRegularGame = null; IsCardLab = false;
+            Visuals.ResetSession(Game.LastVisualEvent?.serial??0);
             logs.Clear(); logs.AddRange(savedRegularLogs ?? new string[0]);
             SelectedCardId = null; revealedCard.gameObject.SetActive(false); RevealedCardInstanceId = null; RevealedAiCard = null;
             messageText.text = "정규 게임 복귀"; labBadge.gameObject.SetActive(false); Refresh();

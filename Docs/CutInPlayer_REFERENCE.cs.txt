@@ -1,0 +1,96 @@
+using System;
+using System.Collections;
+using UnityEngine;
+
+/// Persona-style slash cut-in player.
+/// Hierarchy (all children of this object, centered on the camera):
+///   Dim      : SpriteRenderer (white 1x1 sprite scaled to cover screen, color black), order 0
+///   BandBG   : SpriteRenderer  <- cutin_bg_sheet frames,              order 1
+///   Mask     : SpriteMask      <- cutin_mask_sheet frames
+///   Portrait : SpriteRenderer  (Mask Interaction = Visible Inside Mask), order 2
+///   BandFG   : SpriteRenderer  <- cutin_fg_sheet frames,              order 3
+/// Slice each sheet in the Sprite Editor: Grid By Cell Size 960 x 540 (24 frames, left->right, top->bottom).
+public class CutInPlayer : MonoBehaviour
+{
+    public Sprite[] bgFrames = new Sprite[24];
+    public Sprite[] fgFrames = new Sprite[24];
+    public Sprite[] maskFrames = new Sprite[24];
+
+    public SpriteRenderer dim, bandBG, bandFG, portrait;
+    public SpriteMask mask;
+
+    public float fps = 30f;
+    public float pixelsPerUnit = 100f;      // same PPU as the imported sheets
+    public bool pauseGameDuringCutIn = true;
+
+    // From cutin_meta.json
+    static readonly float[] DimAlpha = {
+        .65f,.65f,.65f,.65f,.65f,.65f,.65f,.65f,.65f,.65f,.65f,.65f,
+        .65f,.65f,.65f,.65f,.65f,.65f,.542f,.433f,.325f,.217f,.108f,0f };
+    const int EnterFrame = 3, FlashFrame = 9, ExitFrame = 18, BandAngle = 11;
+
+    public event Action OnFlash;      // 0.3s: hit-stop / SFX
+    public event Action OnSkillFire;  // 0.6s: apply card skill
+
+    public void Play(Sprite portraitSprite, Action onDone = null)
+    {
+        portrait.sprite = portraitSprite;
+        StopAllCoroutines();
+        StartCoroutine(Run(onDone));
+    }
+
+    IEnumerator Run(Action onDone)
+    {
+        float prevScale = Time.timeScale;
+        if (pauseGameDuringCutIn) Time.timeScale = 0f;
+        SetVisible(true);
+
+        int last = -1;
+        float t = 0f;
+        int n = bgFrames.Length;
+        while (true)
+        {
+            int f = Mathf.FloorToInt(t * fps);
+            if (f >= n) break;
+            for (int i = last + 1; i <= f; i++)
+            {
+                if (i == FlashFrame) OnFlash?.Invoke();
+                if (i == ExitFrame) OnSkillFire?.Invoke();
+            }
+            if (f != last) ApplyFrame(f);
+            last = f;
+            yield return null;
+            t += Time.unscaledDeltaTime;
+        }
+
+        SetVisible(false);
+        if (pauseGameDuringCutIn) Time.timeScale = prevScale;
+        onDone?.Invoke();
+    }
+
+    void ApplyFrame(int f)
+    {
+        bandBG.sprite = bgFrames[f];
+        bandFG.sprite = fgFrames[f];
+        mask.sprite = maskFrames[f];
+        var c = dim.color; c.a = DimAlpha[f]; dim.color = c;
+
+        // Portrait slides along the band axis while it enters/exits (approximation of meta.json "portrait").
+        bool vis = f >= EnterFrame && f < 22;
+        portrait.enabled = vis;
+        if (!vis) return;
+        float tin = Mathf.Clamp01((f - EnterFrame) / 4f);
+        float easeOut = 1f - Mathf.Pow(1f - tin, 3f);
+        float slide = (1f - easeOut) * -220f + (f >= 8 ? (f - 8) * 3f : 0f);
+        if (f >= ExitFrame) { float te = Mathf.Clamp01((f - ExitFrame) / 4f); slide += te * te * te * 900f; }
+        float a = BandAngle * Mathf.Deg2Rad;
+        portrait.transform.localPosition = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f) * (slide / pixelsPerUnit);
+        portrait.transform.localScale = Vector3.one * (1.08f - 0.08f * easeOut);
+    }
+
+    void SetVisible(bool v)
+    {
+        dim.enabled = bandBG.enabled = bandFG.enabled = portrait.enabled = v;
+        mask.enabled = v;
+    }
+}

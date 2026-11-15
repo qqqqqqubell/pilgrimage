@@ -159,6 +159,10 @@ namespace Pilgrimage
             var card = Game.FindCard(source).Card;
             pending = new PendingPlay { actor = actor, source = source, target = target }; Busy = true;
             Reveal = new LanReveal { actor = actor, id = card.Definition.Id, guid = source.ToString("D"), serial = ++revealSerial, result = "카드 공개 중" };
+            float scale=(float)Math.Max(.02,Math.Min(2,aiSettings.presentationTimeScale));
+            Reveal.travelSeconds=(float)Math.Max(.05,Math.Min(2,aiSettings.travelDuration))*scale;
+            Reveal.cutInSeconds=card.Definition.Faction!=FactionId.None&&card.Definition.IsPlayable ? .8f*scale : 0;
+            Reveal.resultSeconds=.8f*scale;
             Version++; return true;
         }
         public bool CompletePlay(out string message)
@@ -166,7 +170,10 @@ namespace Pilgrimage
             if (pending == null) { message = "처리할 카드가 없습니다."; return false; }
             var action = pending; pending = null;
             bool result = Game.TryPlay(action.actor, action.source, out message, action.target);
-            Reveal.result = message; Version++; return result;
+            Reveal.result = message; Reveal.completed=true; Reveal.succeeded=result;
+            Reveal.outcome=result?Game.LastVisualEvent:null;
+            if(Reveal.outcome!=null)Reveal.outcome.presentation=Reveal.serial;
+            Version++; return result;
         }
         public void FinishReveal() { if (Busy && pending == null) { Busy = false; Version++; } }
         public bool StepAi()
@@ -204,7 +211,9 @@ namespace Pilgrimage
                     nextIncome = Game.PreviewRoundIncome(i), ai = IsAi(i), effects = string.Join("\n", p.TimedEffects.Select(e => CardCatalog.Get(e.Source).Name + " · " + e.RemainingRoundStarts + "회")) }).ToArray(),
                 hand = own.Hand.Select(c => { var data = LanCard.Of(Game, c); data.costs = Enumerable.Range(0,4).Select(t => Game.EffectiveCost(owner,c,new EffectTarget {PlayerIndex=t})).ToArray(); return data; }).ToArray(), selections = choices.ToArray(), winners = Game.Winners.ToArray(),
                 rewards = Game.RoundRewards.Select(r => new LanReward { owner = r.PlayerIndex, id = r.CardId, guid = r.InstanceId.ToString("D"), destination = r.Destination }).ToArray(),
-                reveal = Reveal == null ? null : new LanReveal { actor = Reveal.actor, id = Reveal.id, guid = Reveal.guid, serial = Reveal.serial, result = Reveal.result }
+                events = Game.VisualEvents.ToArray(),
+                reveal = Reveal == null ? null : new LanReveal { actor = Reveal.actor, id = Reveal.id, guid = Reveal.guid, serial = Reveal.serial, result = Reveal.result,
+                    completed=Reveal.completed,succeeded=Reveal.succeeded,travelSeconds=Reveal.travelSeconds,cutInSeconds=Reveal.cutInSeconds,resultSeconds=Reveal.resultSeconds,outcome=Reveal.outcome }
             };
         }
     }

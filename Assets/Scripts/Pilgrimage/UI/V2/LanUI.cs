@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
@@ -21,6 +22,9 @@ namespace Pilgrimage.UI
         private TMP_Text lanStatus;
         private Button labEntryButton, leaveLanButton, kickStalledButton;
         private int displayedReveal;
+        private readonly Queue<LanReveal> lanPresentations=new Queue<LanReveal>();
+        private readonly Dictionary<int,bool> lanResolved=new Dictionary<int,bool>();
+        private Coroutine lanPresentationRoutine;
         private float kickConfirmUntil;
         private const string KickStalledLabel = "미응답 플레이어 → AI";
         private bool firewallBusy;
@@ -116,7 +120,13 @@ namespace Pilgrimage.UI
         private void ReturnFromLan(string reason)
         {
             if (Network != null) { Network.Changed -= OnLanChanged; Network.Closed -= ReturnFromLan; Destroy(Network); Network = null; }
+<<<<<<< Updated upstream
             StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false; SetEndLabel("행동 종료");
+=======
+            StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false;
+            Visuals.ResetSession();
+            lanPresentations.Clear();lanResolved.Clear();lanPresentationRoutine=null;
+>>>>>>> Stashed changes
             Game = null; LanView = null; IsLanMode = false; LanError = reason; SelectedCardId = null; displayedReveal = 0;
             CloseCardPicker(); CloseDetail(); CloseLabPanel(); rewardRoot.gameObject.SetActive(false); revealedCard.gameObject.SetActive(false);
             RevealedCardInstanceId = null; RevealedAiCard = null;
@@ -129,6 +139,7 @@ namespace Pilgrimage.UI
         {
             LanView = envelope.game;
             if (Network != null && Network.IsHost) Game = Network.Authority?.Game;
+            if(!isActiveAndEnabled)return;
             if (!string.IsNullOrEmpty(envelope.error)) { LanError = envelope.error; Feedback(envelope.error); }
             if (envelope.lobby.phase == LanPhase.Playing && LanView != null) {
                 lanScreen.gameObject.SetActive(false); leaveLanButton.gameObject.SetActive(true);
@@ -136,8 +147,13 @@ namespace Pilgrimage.UI
                 RefreshLanGame();
                 if (LanView.reveal != null && LanView.reveal.serial > displayedReveal) {
                     displayedReveal = LanView.reveal.serial;
-                    StartCoroutine(AnimateLanReveal(LanView.reveal));
+                    Visuals.ReserveReveal(LanView.reveal.guid,LanView.reveal.serial);
+                    lanPresentations.Enqueue(LanView.reveal);
+                    if(lanPresentationRoutine==null)lanPresentationRoutine=StartCoroutine(PresentLanQueue());
                 }
+                if(LanView.reveal!=null&&LanView.reveal.completed)lanResolved[LanView.reveal.serial]=LanView.reveal.succeeded;
+                Visuals.TimeScale=LanView.reveal!=null&&LanView.reveal.resultSeconds>0?LanView.reveal.resultSeconds/.8f:VisualScale;
+                Visuals.Submit(LanView.events);
                 if (!string.IsNullOrEmpty(envelope.error)) Feedback(envelope.error);
             } else RenderLobby(envelope.lobby, envelope.error);
         }
@@ -199,7 +215,7 @@ namespace Pilgrimage.UI
             if(LanView.reveal!=null&&!string.IsNullOrEmpty(LanView.reveal.result)) Feedback(LanView.reveal.result);
             if(LanView.phase==GamePhase.Finished)Feedback("최다 신도 "+LanView.players.Max(p=>p.followers)+"명 · 전체 인원 "+LanView.population+"명");
         }
-        private bool LanCanAct => LanView!=null&&LanView.phase==GamePhase.Actions&&LanView.activePlayer==LocalSeat&&!LanView.busy&&!IsAnimating&&Network!=null&&!Network.Pending;
+        private bool LanCanAct => LanView!=null&&LanView.phase==GamePhase.Actions&&LanView.activePlayer==LocalSeat&&!LanView.busy&&!IsAnimating&&!(Visuals!=null&&Visuals.IsBusy)&&Network!=null&&!Network.Pending;
         private void RenderLanBacks(int relative,int count)
         {
             var area=opponentHands[relative-1];ClearChildren(area);
@@ -300,15 +316,33 @@ namespace Pilgrimage.UI
         }
         private IEnumerator AnimateLanReveal(LanReveal reveal)
         {
-            IsAnimating=true;
             try {
                 Reveal(CardCatalog.Get(reveal.id),LanView.players[reveal.actor].ai,Guid.Parse(reveal.guid));
                 int relative=(reveal.actor-LocalSeat+4)%4;
                 Vector2 start=relative==0?new Vector2(0,-350):relative==1?new Vector2(0,211):relative==2?new Vector2(-755,-19):new Vector2(755,-19);
-                float travel=Mathf.Clamp(aiSettings.travelDuration,.05f,2);
+                float travel=Mathf.Max(.001f,reveal.travelSeconds);
                 for(float t=0;t<travel;t+=Time.unscaledDeltaTime){revealedCard.anchoredPosition=Vector2.Lerp(start,new Vector2(0,6),t/travel);revealedCard.localScale=Vector3.one*Mathf.Lerp(.45f,1,t/travel);yield return null;}
                 revealedCard.anchoredPosition=new Vector2(0,6);revealedCard.localScale=Vector3.one;
+<<<<<<< Updated upstream
             } finally {IsAnimating=false;if(isActiveAndEnabled&&LanView!=null)UpdateLanEndButton();}
+=======
+                if(reveal.cutInSeconds>0&&(!reveal.completed||reveal.succeeded))Visuals.BeginCutIn(CardCatalog.Get(reveal.id),reveal.cutInSeconds/.8f);
+            } finally {if(isActiveAndEnabled&&LanView!=null)endButton.interactable=LanCanAct;}
+        }
+        private IEnumerator PresentLanQueue()
+        {
+            IsAnimating=true;
+            try{
+                while(lanPresentations.Count>0){var reveal=lanPresentations.Dequeue();yield return AnimateLanReveal(reveal);
+                    while(Visuals.CutIn.IsPlaying)yield return null;
+                    Visuals.ReleaseReveal(reveal.guid,reveal.serial);
+                    while(Network!=null&&!lanResolved.ContainsKey(reveal.serial))yield return null;
+                    if(Network==null)yield break;
+                    if(lanResolved[reveal.serial])while(!Visuals.HasPresented(reveal.guid,reveal.serial))yield return null;
+                    lanResolved.Remove(reveal.serial);
+                }
+            }finally{IsAnimating=false;lanPresentationRoutine=null;if(isActiveAndEnabled&&LanView!=null)RefreshLanGame();}
+>>>>>>> Stashed changes
         }
         private void UpdateLanInput()
         {

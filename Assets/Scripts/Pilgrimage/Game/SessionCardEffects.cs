@@ -123,7 +123,7 @@ namespace Pilgrimage
                     int uses = game.JudgmentCount(actor, context.Source);
                     var judged = game.Players[context.Target.PlayerIndex];
                     if (judged.Doctrine >= 30)
-                        CardEffectResolver.ApplyBasic(judged, new CardDefinition(id, "", "", 0, true, doctrineChange: -(5 + uses * 5)), game.Atheists, true, true, true, false);
+                        game.ApplyBasic(context.Target.PlayerIndex, new CardDefinition(id, "", "", 0, true, doctrineChange: -(5 + uses * 5)));
                     else foreach (var follower in EligibleFollowers(judged.Deck).Take(1 + uses).ToArray()) game.RemoveCard(follower.InstanceId);
                     game.AddShuffled(actor, CardId.HeresyJudgment); break;
                 case CardId.CallOfFur:
@@ -141,7 +141,7 @@ namespace Pilgrimage
                 case CardId.FalseRevelation:
                     var victim = game.Players[context.Target.PlayerIndex];
                     int beforeFaith = victim.Faith, beforeDoctrine = victim.Doctrine;
-                    CardEffectResolver.ApplyBasic(victim, new CardDefinition(id, "", "", 0, true, faithChange: -10, doctrineChange: -10), game.Atheists, true, true, true, false);
+                    game.ApplyBasic(context.Target.PlayerIndex, new CardDefinition(id, "", "", 0, true, faithChange: -10, doctrineChange: -10));
                     if ((victim.Faith < beforeFaith && victim.Faith <= 30) || (victim.Doctrine < beforeDoctrine && victim.Doctrine <= 30)) player.Offering++;
                     break;
                 case CardId.Blessing:
@@ -215,8 +215,8 @@ namespace Pilgrimage
         {
             for (int i = 0; i < GameSession.PlayerCount; i++)
                 if (includeSelf || i != actor)
-                    CardEffectResolver.ApplyBasic(game.Players[i], new CardDefinition(CardId.AreaCleansing, "", "", 0, true,
-                        faithChange: decrease, doctrineChange: decrease), game.Atheists, true, true, true, false);
+                    game.ApplyBasic(i, new CardDefinition(CardId.AreaCleansing, "", "", 0, true,
+                        faithChange: decrease, doctrineChange: decrease));
         }
 
         private static void Convert(GameSession game, IEnumerable<CardInstance> pile, int count, CardId to)

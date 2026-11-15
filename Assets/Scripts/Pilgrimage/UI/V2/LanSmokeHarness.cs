@@ -32,7 +32,7 @@ namespace Pilgrimage.UI
             yield return null;
             demo=GetComponent<DemoController>();mode=Value("-pilgrimageLanScenario")??"finish";output=Value("-pilgrimageLanResult");
             result.role=Value("-pilgrimageLanSmoke");result.humans=int.Parse(Value("-pilgrimageLanHumans")??"2");peerNumber=int.Parse(Value("-pilgrimageLanPeer")??"0");
-            demo.SelectLanMode();demo.AiConfiguration.revealInterval=.1f;demo.AiConfiguration.travelDuration=.05f;
+            demo.SelectLanMode();demo.AiConfiguration.revealInterval=.1f;demo.AiConfiguration.travelDuration=.05f;demo.AiConfiguration.presentationTimeScale=.05f;
             if(!demo.OpenLan(result.role=="host",Value("-pilgrimageLanIp")??"127.0.0.1",ushort.Parse(Value("-pilgrimageLanPort")??"17777"),"LAN automation","Peer "+peerNumber)) {Finish("failed",demo.LanError);yield break;}
             demo.Network.Changed+=OnView;
             demo.Network.Closed+=reason=>{result.menuReturned=demo.IsModeSelectionOpen;Finish(mode=="close"&&result.role=="client"?"closed":"disconnected",reason);};
@@ -51,7 +51,7 @@ namespace Pilgrimage.UI
                 var authority=demo.Network.Authority;
                 foreach(var member in authority.Members) {
                     var recipient=authority.ViewFor(member.Connection);string serialized=JsonUtility.ToJson(recipient);
-                    var published=recipient.rewards.Select(r=>r.guid).ToHashSet();if(recipient.reveal!=null)published.Add(recipient.reveal.guid);
+                    var published=recipient.rewards.Select(r=>r.guid).Concat(recipient.events.Where(e=>e.cause==VisualCause.Card).Select(e=>e.source)).ToHashSet();if(recipient.reveal!=null)published.Add(recipient.reveal.guid);
                     if(authority.Game.Players.Where((p,i)=>i!=recipient.localSeat).SelectMany(p=>p.Hand.Concat(p.Deck)).Any(c=>!published.Contains(c.InstanceId.ToString("D"))&&serialized.Contains(c.InstanceId.ToString("D"))))result.privateViews=false;
                 }
                 result.peopleConserved &= authority.Game.PopulationIsConserved;

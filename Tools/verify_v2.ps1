@@ -22,7 +22,7 @@ $uiDll = Join-Path $validationDir 'Pilgrimage.UI.dll'
 if ($LASTEXITCODE -ne 0) { throw 'Runtime compilation failed' }
 & $mono $compiler -nologo -noconfig -nostdlib+ -target:library ('-out:' + $uiDll) $baseRefs $engineRefs $uiRefs ('-r:' + $runtimeDll) $uiSources
 if ($LASTEXITCODE -ne 0) { throw 'UI compilation failed' }
-& $mono $compiler -nologo -noconfig -nostdlib+ -target:library ('-out:' + (Join-Path $validationDir 'Pilgrimage.Editor.dll')) $baseRefs $engineRefs $uiRefs ('-r:' + $runtimeDll) ('-r:' + $uiDll) $editorSources
+& $mono $compiler -nologo -noconfig -nostdlib+ -target:library ('-out:' + (Join-Path $validationDir 'Pilgrimage.Editor.dll')) $baseRefs $engineRefs $uiRefs ('-r:' + (Join-Path $ReferenceProject 'Library/ScriptAssemblies/Unity.2D.Sprite.Editor.dll')) ('-r:' + $runtimeDll) ('-r:' + $uiDll) $editorSources
 if ($LASTEXITCODE -ne 0) { throw 'Editor compilation failed' }
 $nunit = @(Get-ChildItem 'Library\PackageCache\com.unity.ext.nunit*\net472\unity-custom\nunit.framework.dll')[0].FullName
 Copy-Item -LiteralPath $nunit -Destination (Join-Path $validationDir 'nunit.framework.dll')
@@ -39,7 +39,7 @@ using NUnit.Framework;
 public static class ValidationRunner {
   public static int Main() {
     int passed = 0, failed = 0;
-    foreach (Type fixture in new[] { typeof(Pilgrimage.Tests.CardPrototypeTests), typeof(Pilgrimage.Tests.GameSessionTests), typeof(Pilgrimage.Tests.AiStrategyTests), typeof(Pilgrimage.Tests.ExpansionTests), typeof(Pilgrimage.Tests.LanRoomTests) }) {
+    foreach (Type fixture in new[] { typeof(Pilgrimage.Tests.CardPrototypeTests), typeof(Pilgrimage.Tests.GameSessionTests), typeof(Pilgrimage.Tests.AiStrategyTests), typeof(Pilgrimage.Tests.ExpansionTests), typeof(Pilgrimage.Tests.LanRoomTests), typeof(Pilgrimage.Tests.GameVisualEventTests) }) {
       object instance = Activator.CreateInstance(fixture);
       foreach (MethodInfo test in fixture.GetMethods()) {
         if (!Attribute.IsDefined(test, typeof(TestAttribute))) continue;

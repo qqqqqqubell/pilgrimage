@@ -210,6 +210,7 @@ namespace Pilgrimage
             string cardName = card.Definition.Name;
             int offering = player.Offering, faith = player.Faith, doctrine = player.Doctrine;
             CardId playedId = card.Definition.Id;
+            BeginVisual(VisualCause.Card, actor, card);
             player.Offering -= EffectiveCost(actor, card, target);
             handlers[card.Definition.EffectKey].Execute(new CardEffectContext(this, actor, card, target));
             card.SuccessfulUses++;
@@ -220,6 +221,7 @@ namespace Pilgrimage
             player.MutableHand.Remove(card);
             player.MutableDiscard.Add(card);
             CardsPlayedThisTurn++;
+            FinishVisual();
             message = $"{player.Name} · {cardName} | 헌금 {offering}→{player.Offering} · 신앙 {faith}→{player.Faith} · 교리 {doctrine}→{player.Doctrine}";
             LastMessage = message;
             return true;
@@ -231,6 +233,7 @@ namespace Pilgrimage
             PlayerState player = players[actor];
             // Heretics trigger at their owner's action end. Remaining hands are
             // discarded only after all four players have ended the round.
+            BeginVisual(VisualCause.TurnEnd, actor);
             foreach (CardInstance ignored in player.Hand.Where(c => c.Definition.Id == CardId.Heretic).ToArray())
             {
                 foreach (var follower in SessionCardEffects.EligibleFollowers(player.Deck).Take(player.Doctrine <= 30 ? 2 : 1).ToArray())
@@ -243,8 +246,10 @@ namespace Pilgrimage
             interestUsed.Remove(actor);
             actionOffset++;
             LastMessage = player.Name + " 행동 종료";
+            FinishVisual();
             if (actionOffset == PlayerCount)
             {
+                BeginVisual(VisualCause.NaturalDecay);
                 foreach (PlayerState p in players)
                 {
                     ApplyNaturalDecay(p);
@@ -252,6 +257,7 @@ namespace Pilgrimage
                     p.MutableDiscard.AddRange(p.MutableHand);
                     p.MutableHand.Clear();
                 }
+                FinishVisual();
                 if (Round % 4 == 0) AwardRoundRewards();
                 else AdvanceRound();
             }
@@ -303,7 +309,7 @@ namespace Pilgrimage
         }
 
         internal void ApplyBasic(int actor, CardDefinition def)
-        { Atheists = CardEffectResolver.ApplyBasic(players[actor], def, Atheists, true, true, true, false); }
+        { Atheists = CardEffectResolver.ApplyBasic(players[actor], def, Atheists, true, true, true, false, protection => RecordDefense(actor, protection)); }
 
         public int EffectiveCost(CardDefinition definition, int targetPlayer)
             => CostFor(definition, ActivePlayerIndex, targetPlayer, players[ActivePlayerIndex].Hand.FirstOrDefault(c => c.Definition.Id == definition.Id));
@@ -324,26 +330,34 @@ namespace Pilgrimage
         {
             Phase = GamePhase.Actions;
             actionOffset = 0;
-            ResolveRefusingFollowers();
+            BeginVisual(VisualCause.Delayed); ResolveRefusingFollowers(); FinishVisual();
             for (int owner = 0; owner < PlayerCount; owner++)
             {
                 PlayerState player = players[owner];
+                BeginVisual(VisualCause.RoundIncome, owner);
                 if (Round != 1 && !accumulate) player.Offering = 0;
+                FinishVisual();
+                BeginVisual(VisualCause.Delayed, owner);
                 TimedCardEffects.ResolveDelayed(this, owner);
+                FinishVisual();
+                BeginVisual(VisualCause.Threshold, owner);
                 if (player.Doctrine <= 20)
                 {
                     var follower = SessionCardEffects.EligibleFollowers(player.Deck).FirstOrDefault();
                     if (follower != null) Transform(follower.InstanceId, CardCatalog.Get(CardId.Heretic));
                 }
+                FinishVisual();
+                BeginVisual(VisualCause.RoundIncome, owner);
                 if (Round != 1) player.Offering = TimedCardEffects.SaturatingAdd(player.Offering, PreviewRoundIncome(owner));
+                FinishVisual();
             }
             for (int offset = 0; offset < PlayerCount; offset++)
             {
                 int owner = EffectPolicy.loansResolveInLeaderOrder ? (FirstPlayerIndex + offset) % PlayerCount : offset;
                 PlayerState player = players[owner];
-                TimedCardEffects.ResolveLoans(this, owner);
-                TimedCardEffects.CompleteIncome(player);
-                Draw(player, DrawCount(owner));
+                BeginVisual(VisualCause.Delayed, owner); TimedCardEffects.ResolveLoans(this, owner); FinishVisual();
+                BeginVisual(VisualCause.Duration, owner); TimedCardEffects.CompleteIncome(player); FinishVisual();
+                BeginVisual(VisualCause.RoundDraw, owner); Draw(player, DrawCount(owner)); FinishVisual();
             }
         }
 

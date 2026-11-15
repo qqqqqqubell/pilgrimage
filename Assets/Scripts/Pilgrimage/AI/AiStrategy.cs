@@ -37,6 +37,7 @@ namespace Pilgrimage
         public int randomSeed = -1; // Negative: varied games. Nonnegative: reproducible tests.
         public float revealInterval = 1;
         public float travelDuration = 0.25f;
+        public float presentationTimeScale = 1; // Visual timing only; tests may accelerate, never changes rules.
         public float delayedRewardDiscount = 0.9f;
         public int savingHorizon = 3;
         public float savingPenalty = 0.35f;

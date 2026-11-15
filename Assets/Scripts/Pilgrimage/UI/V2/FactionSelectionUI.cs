@@ -29,6 +29,7 @@ namespace Pilgrimage.UI
         {
             if (IsLanMode || IsModeSelectionOpen || !IsFactionSelectionOpen || Game != null || !FactionSetup.IsPlayable(faction)) return false;
             Game = new GameSession(settings != null ? settings.assumptions : null, humanFaction: faction);
+            Visuals.ResetSession();
             factionSelection.gameObject.SetActive(false);
             targetPlayer = 1;
             InitializeAiPlayers();
@@ -39,6 +40,7 @@ namespace Pilgrimage.UI
         private void ShowFactionSelection()
         {
             Game = null;
+            Visuals.ResetSession();
             factionSelection.gameObject.SetActive(true);
             factionSelection.SetAsLastSibling();
         }

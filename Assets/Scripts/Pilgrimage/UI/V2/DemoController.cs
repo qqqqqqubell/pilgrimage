@@ -18,7 +18,7 @@ namespace Pilgrimage.UI
         public GameSession Game { get; private set; }
         public bool IsAnimating { get; private set; }
         public bool IsDetailOpen => modal != null && modal.gameObject.activeSelf;
-        public bool CanInteract => (IsLanMode ? LanView != null && !LanView.busy && Network != null && !Network.Pending : Game != null) && !IsModeSelectionOpen && !IsFactionSelectionOpen && !IsAnimating && !IsDetailOpen && !IsAiRunning && !IsLabPanelOpen && !IsCardPickerOpen;
+        public bool CanInteract => (IsLanMode ? LanView != null && !LanView.busy && Network != null && !Network.Pending : Game != null) && !(Visuals != null && Visuals.IsBusy) && !IsModeSelectionOpen && !IsFactionSelectionOpen && !IsAnimating && !IsDetailOpen && !IsAiRunning && !IsLabPanelOpen && !IsCardPickerOpen;
         public bool IsAiRunning { get; private set; }
         public CardDefinition RevealedAiCard { get; private set; }
         // Presentation reference only. The physical card remains in exactly one model pile.
@@ -58,6 +58,7 @@ namespace Pilgrimage.UI
             BuildUI();
             BuildFactionSelection();
             BuildModeSelection();
+            BuildGameplayVisuals();
         }
 
         private void InitializeAiPlayers()
@@ -286,15 +287,8 @@ namespace Pilgrimage.UI
         private void ExecutePlayerCard(Guid id, EffectTarget target)
         {
             if (IsLanMode) { SendLanPlay(id, target); return; }
-            CardDefinition definition = Game.Players[0].Hand.FirstOrDefault(c => c.InstanceId == id)?.Definition;
-            int beforeOffering = Game.Players[0].Offering, beforeFollowers = Game.Players[0].FollowerCount;
-            int beforeFaith = Game.Players[0].Faith, beforeDoctrine = Game.Players[0].Doctrine;
-            if (!Game.TryPlay(0, id, out string message, target)) { Feedback(message); return; }
-            Log(message);
-            Reveal(definition, false, id);
-            ShowResult(0, beforeOffering, beforeFollowers, beforeFaith, beforeDoctrine);
-            CardView view = handViews.FirstOrDefault(v => v.Card.InstanceId == id);
-            StartCoroutine(ReleaseCard(view));
+            if (!Game.CanPlay(0, id, out string message, target)) { Feedback(message); return; }
+            StartCoroutine(PlayLocalCardWithVisuals(id, target));
         }
 
         private IEnumerator ReleaseCard(CardView view)
@@ -324,6 +318,7 @@ namespace Pilgrimage.UI
         private void Refresh()
         {
             if (IsLanMode) { RefreshLanGame(); return; }
+            Visuals.TimeScale = VisualScale; Visuals.Submit(Game.VisualEvents);
             if (Game == null) return;
             for (int i = 0; i < 4; i++)
             {
@@ -348,7 +343,7 @@ namespace Pilgrimage.UI
             activeText.enableAutoSizing = true; activeText.fontSizeMin = 14; activeText.fontSizeMax = 26;
             if (Game.Phase == GamePhase.Finished) messageText.text = "최다 신도 " + Game.Players.Max(p => p.FollowerCount) + "명\n전체 인원 " + Game.PopulationTotal + "명";
             if (Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0) targetLabel.text = Game.Players[targetPlayer].Name;
-            endButton.interactable = !IsAnimating && !IsAiRunning && Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0;
+            endButton.interactable = !IsAnimating && !IsAiRunning && !Visuals.IsBusy && Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0;
             foreach (CardView view in handViews) { view.gameObject.SetActive(false); Destroy(view.gameObject); }
             handViews.Clear();
             for (int i = 0; i < Game.Players[0].Hand.Count; i++)
@@ -442,13 +437,19 @@ namespace Pilgrimage.UI
                         yield return null;
                     }
                     revealedCard.anchoredPosition = new Vector2(0, 6); revealedCard.localScale = Vector3.one;
+                    if (VisualAssetLibrary.HasCutIn(decision.Definition)) {
+                        Visuals.BeginCutIn(decision.Definition, VisualScale);
+                        yield return new WaitForSecondsRealtime(CutInPresenter.EffectMoment * VisualScale);
+                    }
                     int offering = Game.Players[actor].Offering, followers = Game.Players[actor].FollowerCount;
                     int faith = Game.Players[actor].Faith, doctrine = Game.Players[actor].Doctrine;
                     if (Game.TryPlay(actor, decision.CardInstanceId, out string message, decision.Target))
                     { Log(message); ShowResult(actor, offering, followers, faith, doctrine); }
                     else Feedback(message);
                     Refresh();
-                    yield return new WaitForSecondsRealtime(Mathf.Max(0.05f, interval - travel));
+                    yield return null;
+                    while (Visuals.IsBusy) yield return null;
+                    yield return new WaitForSecondsRealtime(Mathf.Max(0.01f, (interval - travel - .8f) * VisualScale));
                 }
                 Game.EndActionTurn(actor); Log(Game.LastMessage);
             }
@@ -558,7 +559,10 @@ namespace Pilgrimage.UI
                 Destroy(font);
             }
         }
-        private void OnDisable() { StopAllCoroutines(); IsAiRunning = false; IsAnimating = false; }
-        private void OnEnable() { if ((Game != null || LanView != null) && root != null) Refresh(); }
+        private void OnDisable() { StopAllCoroutines(); lanPresentationRoutine=null;lanPresentations.Clear();lanResolved.Clear(); if(Visuals!=null)Visuals.ResetSession(Visuals.LastEventSerial); IsAiRunning = false; IsAnimating = false; }
+        private void OnEnable() {
+            if(IsLanMode&&Network?.View?.game!=null){LanView=Network.View.game;displayedReveal=LanView.reveal?.serial??0;Visuals.ResetSession(LanView.events?.LastOrDefault()?.serial??0);}
+            if ((Game != null || LanView != null) && root != null) Refresh();
+        }
     }
 }

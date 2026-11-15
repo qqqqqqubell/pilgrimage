@@ -14,19 +14,20 @@ if ($ReuseProject) {
     if (!$validationRoot.StartsWith($allowedPrefix,[StringComparison]::OrdinalIgnoreCase) -or $validationRoot -eq $projectRoot) { throw 'ReuseProject must be an isolated PilgrimageAiUnity-* temporary project.' }
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $validationRoot 'Assets/Scenes'),(Join-Path $validationRoot 'Packages'),(Join-Path $validationRoot 'ProjectSettings') | Out-Null
-foreach ($name in @('Scripts','Tests','TextMesh Pro')) {
+foreach ($name in @('Scripts','Tests','TextMesh Pro','Pilgrimage')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot ('Assets/' + $name)) -Destination (Join-Path $validationRoot 'Assets') -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $projectRoot ('Assets/' + $name + '.meta')) -Destination (Join-Path $validationRoot 'Assets')
 }
 foreach ($name in @('PilgrimageDemo.unity','PilgrimageDemo.unity.meta')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot ('Assets/Scenes/' + $name)) -Destination (Join-Path $validationRoot 'Assets/Scenes')
 }
-foreach ($name in @('ProjectVersion.txt','ProjectSettings.asset')) {
+foreach ($name in @('ProjectVersion.txt','ProjectSettings.asset','UnityConnectSettings.asset')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot ('ProjectSettings/' + $name)) -Destination (Join-Path $validationRoot 'ProjectSettings')
 }
 $dependencies = [ordered]@{}
 $dependencies['com.unity.netcode.gameobjects'] = '2.14.0'
 $dependencies['com.unity.transport'] = '6.6.0'
+$dependencies['com.unity.2d.sprite'] = '1.0.0'
 foreach ($packageName in @('com.unity.ugui','com.unity.inputsystem','com.unity.test-framework','com.unity.ext.nunit')) {
     $packageDir = @(Get-ChildItem (Join-Path $projectRoot 'Library/PackageCache') -Directory | Where-Object { $_.Name.StartsWith($packageName + '@') })[0]
     $dependencies[$packageName] = 'file:' + $packageDir.FullName.Replace('\','/')

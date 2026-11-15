@@ -130,11 +130,14 @@ namespace Pilgrimage.UI
         {
             revealing = true;
             try {
-                float travel = Mathf.Clamp(configuration.travelDuration, .05f, 2);
-                yield return new WaitForSecondsRealtime(travel);
+                var reveal=Authority.Reveal;
+                float before=reveal.travelSeconds+reveal.cutInSeconds*.75f;
+                yield return new WaitForSecondsRealtime(before);
                 if (Authority == null || stopping) yield break;
                 Authority.CompletePlay(out _); Publish();
-                yield return new WaitForSecondsRealtime(Mathf.Max(.05f, Mathf.Clamp(configuration.revealInterval, .1f, 10) - travel));
+                float remainingCutIn=reveal.cutInSeconds*.25f;
+                float interval=Mathf.Clamp(configuration.revealInterval,.1f,10)*Mathf.Clamp(configuration.presentationTimeScale,.02f,2);
+                yield return new WaitForSecondsRealtime(Mathf.Max(remainingCutIn+reveal.resultSeconds+.05f,interval-before));
                 if (Authority == null || stopping) yield break;
                 Authority.FinishReveal(); Publish();
             } finally { revealing = false; }
