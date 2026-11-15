@@ -74,12 +74,8 @@ namespace Pilgrimage
         public LanReveal reveal;
         public int EffectiveCost(LanCard card, int target)
         {
-            if (card.costs != null && card.costs.Length == 4 && target >= 0 && target < 4) return card.costs[target];
-            var def = CardCatalog.Get(card.id); var own = players[localSeat];
-            if (def.CostKind == CardCostKind.None) return -1;
-            int cost = def.Id == CardId.HeresyJudgment ? 5 + own.judgmentUses * 5 : def.Id == CardId.AggressiveMission ? players[target].faith <= 30 ? 3 : 5 : def.Cost;
-            if ((def.Id == CardId.AggressiveMission || def.Id == CardId.PoorRelief) && own.faith <= 30) cost++;
-            return cost;
+            // The host computes every cost with the real rules; clients never re-derive them.
+            return card != null && card.costs != null && card.costs.Length == 4 && target >= 0 && target < 4 ? card.costs[target] : -1;
         }
     }
     [Serializable] public sealed class LanMemberView

@@ -19,8 +19,13 @@ namespace Pilgrimage.UI
         private RectTransform modeScreen, lanScreen, lobbyContent;
         private TMP_InputField lanName, lanRoomName, lanAddress, lanPort;
         private TMP_Text lanStatus;
-        private Button labEntryButton, leaveLanButton;
+        private Button labEntryButton, leaveLanButton, kickStalledButton;
         private int displayedReveal;
+        private float kickConfirmUntil;
+        private const string KickStalledLabel = "미응답 플레이어 → AI";
+        private bool firewallBusy;
+        private ushort firewallPort;
+        private LanFirewallState firewallState = LanFirewallState.Unsupported;
 
         private void BuildModeSelection()
         {
@@ -47,6 +52,9 @@ namespace Pilgrimage.UI
             lanScreen.gameObject.SetActive(false);
             leaveLanButton = Button(root, "LAN 나가기", new Vector2(-800,501), new Vector2(250,40), LeaveLan);
             leaveLanButton.gameObject.SetActive(false);
+            // Host-only escape hatch for an idle or frozen remote player (no turn timer in the design).
+            kickStalledButton = Button(root, KickStalledLabel, new Vector2(-520,501), new Vector2(290,40), KickStalled);
+            kickStalledButton.gameObject.SetActive(false);
             modeScreen.SetAsLastSibling();
         }
         public void SelectSinglePlayer()
@@ -67,7 +75,27 @@ namespace Pilgrimage.UI
         private void StartLan(bool host)
         {
             if (!ushort.TryParse(lanPort.text, out ushort port) || port == 0) { lanStatus.text = "포트는 1~65535 정수입니다."; return; }
+            if (firewallBusy) return;
+            // Windows exe host: make sure other PCs can reach the port before listening.
+            if (host && LanFirewall.Supported) { StartCoroutine(HostAfterFirewall(port)); return; }
             OpenLan(host, lanAddress.text.Trim(), port, lanRoomName.text, lanName.text);
+        }
+        private IEnumerator HostAfterFirewall(ushort port)
+        {
+            firewallBusy = true; firewallPort = port;
+            lanStatus.text = "방화벽 확인 중…";
+            yield return LanFirewall.Ensure(port, false, s => firewallState = s);
+            firewallBusy = false;
+            if (Network != null || Game != null || !IsLanMode) yield break;
+            OpenLan(true, lanAddress.text.Trim(), port, lanRoomName.text, lanName.text);
+        }
+        private IEnumerator RetryFirewall()
+        {
+            if (firewallBusy || Network == null || !Network.IsHost) yield break;
+            firewallBusy = true; lanStatus.text += "\nWindows 승인 창(UAC)에서 '예'를 눌러 주세요.";
+            yield return LanFirewall.Ensure(firewallPort, true, s => firewallState = s);
+            firewallBusy = false;
+            if (Network?.View?.lobby != null && Network.View.lobby.phase != LanPhase.Playing) RenderLobby(Network.View.lobby, null);
         }
         public bool OpenLan(bool host, string address, ushort port, string room, string name)
         {
@@ -88,11 +116,11 @@ namespace Pilgrimage.UI
         private void ReturnFromLan(string reason)
         {
             if (Network != null) { Network.Changed -= OnLanChanged; Network.Closed -= ReturnFromLan; Destroy(Network); Network = null; }
-            StopAllCoroutines(); IsAnimating = IsAiRunning = false;
+            StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false;
             Game = null; LanView = null; IsLanMode = false; LanError = reason; SelectedCardId = null; displayedReveal = 0;
             CloseCardPicker(); CloseDetail(); CloseLabPanel(); rewardRoot.gameObject.SetActive(false); revealedCard.gameObject.SetActive(false);
             RevealedCardInstanceId = null; RevealedAiCard = null;
-            ClearChildren(handRoot); handViews.Clear(); leaveLanButton.gameObject.SetActive(false);
+            ClearChildren(handRoot); handViews.Clear(); leaveLanButton.gameObject.SetActive(false); kickStalledButton.gameObject.SetActive(false); kickConfirmUntil = 0;
             lanScreen.gameObject.SetActive(false); factionSelection.gameObject.SetActive(false); modeScreen.gameObject.SetActive(true); modeScreen.SetAsLastSibling();
             modeScreen.Find("Menu Feedback").GetComponent<TMP_Text>().text = reason;
             foreach(var input in new[]{lanName,lanRoomName,lanAddress,lanPort}) input.interactable=true;
@@ -118,12 +146,18 @@ namespace Pilgrimage.UI
             ClearChildren(lobbyContent); lanScreen.gameObject.SetActive(true); lanScreen.SetAsLastSibling();
             string endpoint = Network.Address + ":" + Network.Port;
             lanStatus.text = lobby.room + "  ·  " + endpoint + "\n인간 " + lobby.members.Length + "/4 · AI " + (4-lobby.members.Length) + (string.IsNullOrEmpty(error) ? "" : "\n"+error);
+            if (lobby.host && firewallState != LanFirewallState.Unsupported) {
+                lanStatus.text += "\n" + LanFirewall.Describe(firewallState, firewallPort);
+                if (firewallState != LanFirewallState.Ready) Button(lobbyContent,"방화벽 다시 설정",new Vector2(640,-215),new Vector2(360,50),()=>StartCoroutine(RetryFirewall()));
+            }
             bool assignment = lobby.phase == LanPhase.Assignment;
             for (int i=0;i<4;i++) {
                 var member = i<lobby.members.Length ? lobby.members[i] : null;
                 string state = member == null ? "AI 빈자리" : member.name + (member.connection==lobby.localConnection ? " (나)" : "") + " · " + (assignment ? member.confirmed ? "확인 완료" : "확인 대기" : member.ready ? "준비 완료" : "준비 중");
                 string faction = assignment ? FactionSetup.Name(lobby.assignment[i]) : member==null ? "시작 시 배정" : FactionSetup.Name(member.desired);
                 Text(lobbyContent,"Lobby Seat "+i,state+"\n"+faction,new Vector2(-600+i*400,100),new Vector2(385,120),23);
+                if (lobby.host && member != null && member.connection != lobby.localConnection && ulong.TryParse(member.connection, out ulong kicked))
+                    Button(lobbyContent,"내보내기",new Vector2(-600+i*400,195),new Vector2(180,40),()=>Network.Kick(kicked));
             }
             if (assignment) {
                 Text(lobbyContent,"Assignment Seed","최종 교단 배정 · 시드 "+lobby.seed+"\n모두 확인하면 게임을 시작합니다.",new Vector2(0,-50),new Vector2(1500,85),25);
@@ -143,6 +177,7 @@ namespace Pilgrimage.UI
             for(int relative=0;relative<4;relative++) {
                 var p=LanView.players[SeatAt(relative)];
                 playerLabels[relative].text=(p.seat==LanView.activePlayer&&LanView.phase==GamePhase.Actions?"▶ ":"") + p.name + (relative==0?" (나)":p.ai?" · AI":"");
+                playerLabels[relative].enableAutoSizing=true; playerLabels[relative].fontSizeMin=14; playerLabels[relative].fontSizeMax=24;
                 if(relative==0) { int[]v={p.offering,p.faith,p.doctrine,p.followers}; for(int j=0;j<4;j++)ownStats[j].text=v[j].ToString(); }
                 else {
                     opponentStats[relative-1,0].text=p.followers.ToString(); opponentStats[relative-1,1].text=p.offering.ToString(); opponentStats[relative-1,2].text=p.handCount.ToString();
@@ -160,7 +195,7 @@ namespace Pilgrimage.UI
                 var view=card.gameObject.AddComponent<CardView>(); view.Bind(this,LanView.hand[i].DisplayCard(),i,1300);handViews.Add(view);
             }
             if(SelectedCardId.HasValue&&!handViews.Any(v=>v.Card.InstanceId==SelectedCardId))SelectedCardId=null;
-            ApplySelection(); BuildLanRewards();
+            ApplySelection(); BuildLanRewards(); UpdateKickStalled();
             if(LanView.reveal!=null&&!string.IsNullOrEmpty(LanView.reveal.result)) Feedback(LanView.reveal.result);
             if(LanView.phase==GamePhase.Finished)Feedback("최다 신도 "+LanView.players.Max(p=>p.followers)+"명 · 전체 인원 "+LanView.population+"명");
         }
@@ -182,6 +217,25 @@ namespace Pilgrimage.UI
             Text(rewardRoot,"Reward Title",LanView.round+"라운드 · 무작위 카드 획득 결과",new Vector2(0,210),new Vector2(1070,55),25);
             for(int i=0;i<LanView.rewards.Length;i++) {var r=LanView.rewards[i];Text(rewardRoot,"Award "+i,LanView.players[r.owner].name+" · "+CardCatalog.Get(r.id).Name+" → "+PileName(r.destination),new Vector2(0,125-i*75),new Vector2(1050,60),24);}
             var button=Button(rewardRoot,LanView.acknowledged?"다른 참가자 확인 대기":"획득 확인 · 계속",new Vector2(0,-190),new Vector2(500,55),()=>Network.Send(new LanCommand{kind=LanCommandKind.Acknowledge})); button.interactable=!LanView.acknowledged&&!Network.Pending;
+        }
+        private void UpdateKickStalled()
+        {
+            var room = Network != null && Network.IsHost ? Network.Authority : null;
+            bool show = room != null && LanView.phase != GamePhase.Finished && room.StalledRemoteHumans().Count > 0;
+            kickStalledButton.gameObject.SetActive(show);
+            if (!show) kickConfirmUntil = 0;
+            else { kickStalledButton.transform.SetAsLastSibling(); SetKickLabel(Time.realtimeSinceStartup < kickConfirmUntil ? "한 번 더 누르면 AI로 전환" : KickStalledLabel); }
+        }
+        private void SetKickLabel(string label) { var text = kickStalledButton.GetComponentInChildren<TMP_Text>(); if (text != null) text.text = label; }
+        private void KickStalled()
+        {
+            var room = Network != null && Network.IsHost ? Network.Authority : null;
+            if (room == null) return;
+            // Two presses within 3 seconds: a departure cannot be undone (no rejoin).
+            if (Time.realtimeSinceStartup >= kickConfirmUntil) { kickConfirmUntil = Time.realtimeSinceStartup + 3; SetKickLabel("한 번 더 누르면 AI로 전환"); return; }
+            kickConfirmUntil = 0;
+            foreach (ulong id in room.StalledRemoteHumans().ToArray()) Network.Kick(id);
+            Feedback("응답이 없던 플레이어의 좌석을 AI가 이어받습니다.");
         }
         private static string PileName(CardPile pile)=>pile==CardPile.Deck?"덱":pile==CardPile.Hand?"손패":pile==CardPile.Discard?"버린 더미":"제거 더미";
         private void PlayLanSelected()

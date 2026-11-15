@@ -28,6 +28,7 @@ namespace Pilgrimage
         private AiTurn aiTurn;
         private int aiActor = -1, aiRound = -1, revealSerial, assignmentVersion;
         private FactionId[] assigned;
+        private string[] seatNames;
         private PendingPlay pending;
         private sealed class PendingPlay { internal int actor; internal Guid source; internal EffectTarget target; }
         public string Session { get; } = Guid.NewGuid().ToString("N");
@@ -114,6 +115,8 @@ namespace Pilgrimage
                 if (members.All(m => m.Confirmed)) {
                     Game = new GameSession(rules, humanFaction: assigned[0], factionSeats: assigned, networkControlled: true);
                     aiSeats.Clear(); for (int i = members.Count; i < 4; i++) aiSeats.Add(i);
+                    // Lobby nicknames stay attached to their seats even after a departure hands the seat to AI.
+                    seatNames = Enumerable.Range(0, 4).Select(i => i < members.Count ? members[i].Name : null).ToArray();
                     planners = Enumerable.Range(0, 4).Select(i => new RuleBasedAi(aiSettings, i)).ToArray(); Phase = LanPhase.Playing;
                 }
                 return true;
@@ -136,6 +139,16 @@ namespace Pilgrimage
             }
             reason = "지원하지 않는 게임 요청입니다."; return false;
         }
+        // Remote humans the game is currently waiting on: the active actor, or everyone yet to acknowledge rewards.
+        public IReadOnlyList<ulong> StalledRemoteHumans()
+        {
+            if (Phase != LanPhase.Playing || Game == null || Busy) return Array.Empty<ulong>();
+            var remote = members.Where(m => m.Connection != HostConnection);
+            if (Game.Phase == GamePhase.Actions) return remote.Where(m => m.Seat == Game.ActivePlayerIndex && !IsAi(m.Seat)).Select(m => m.Connection).ToArray();
+            if (Game.Phase == GamePhase.RewardChoice) return remote.Where(m => !acknowledged.Contains(m.Connection)).Select(m => m.Connection).ToArray();
+            return Array.Empty<ulong>();
+        }
+        public string SeatName(int seat) => seatNames != null && seat >= 0 && seat < seatNames.Length && seatNames[seat] != null ? seatNames[seat] + " · " + Game.Players[seat].Name : Game.Players[seat].Name;
         private void AdvanceAcknowledgedRewards()
         {
             if (members.All(m => acknowledged.Contains(m.Connection))) { Game.AcknowledgeRewards(); acknowledged.Clear(); }
@@ -185,7 +198,7 @@ namespace Pilgrimage
             return new LanGameView {
                 version = Version, localSeat = owner, round = Game.Round, phase = Game.Phase, activePlayer = Game.ActivePlayerIndex,
                 atheists = Game.Atheists, population = Game.PopulationTotal, busy = Busy, acknowledged = acknowledged.Contains(connection), message = Game.LastMessage,
-                players = Game.Players.Select((p, i) => new LanPlayer { seat = i, name = p.Name, faction = p.Faction, offering = p.Offering,
+                players = Game.Players.Select((p, i) => new LanPlayer { seat = i, name = SeatName(i), faction = p.Faction, offering = p.Offering,
                     faith = p.Faith, doctrine = p.Doctrine, followers = p.FollowerCount, handCount = p.Hand.Count, deckCount = p.Deck.Count,
                     discardCount = p.Discard.Count, removedCount = p.Removed.Count, property = p.ChurchProperty, judgmentUses = p.JudgmentUses,
                     nextIncome = Game.PreviewRoundIncome(i), ai = IsAi(i), effects = string.Join("\n", p.TimedEffects.Select(e => CardCatalog.Get(e.Source).Name + " · " + e.RemainingRoundStarts + "회")) }).ToArray(),

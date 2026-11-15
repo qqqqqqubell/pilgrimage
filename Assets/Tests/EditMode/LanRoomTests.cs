@@ -98,6 +98,31 @@ namespace Pilgrimage.Tests
             Send(lobby,0,LanCommandKind.Ready,out _);Send(lobby,1,LanCommandKind.Ready,out _);Send(lobby,0,LanCommandKind.Prepare,out _);
             lobby.Disconnect(1);Assert.That(lobby.Phase,Is.EqualTo(LanPhase.Lobby));Assert.That(lobby.Game,Is.Null);Assert.That(lobby.Members[0].Ready,Is.False);
         }
+        [Test] public void SeatsKeepLobbyNicknamesAndHostCanSeeWhoTheGameIsWaitingOn()
+        {
+            var r=Start(3);var names=r.ViewFor(2).players.Select(p=>p.name).ToArray();
+            Assert.That(names[0],Is.EqualTo("호스트 · "+r.Game.Players[0].Name));Assert.That(names[1],Does.StartWith("참가자 1 · "));
+            Assert.That(names[3],Is.EqualTo(r.Game.Players[3].Name),"AI seat shows only its faction");
+            Assert.That(r.Game.ActivePlayerIndex,Is.EqualTo(0));Assert.That(r.StalledRemoteHumans(),Is.Empty,"host's own turn is never a remote stall");
+            Assert.That(Send(r,0,LanCommandKind.EndTurn,out _),Is.True);Assert.That(r.StalledRemoteHumans(),Is.EqualTo(new ulong[]{1}));
+            r.Disconnect(1);Assert.That(r.IsAi(1),Is.True);Assert.That(r.StalledRemoteHumans(),Is.Empty);
+            Assert.That(r.ViewFor(0).players[1].name,Does.StartWith("참가자 1 · "),"departed seat keeps its nickname");
+            for(int n=0;n<2000&&r.Game.Phase!=GamePhase.RewardChoice;n++) {
+                if(r.Busy){r.CompletePlay(out _);r.FinishReveal();}
+                else if(r.IsAi(r.Game.ActivePlayerIndex))Assert.That(r.StepAi(),Is.True);
+                else Assert.That(Send(r,(ulong)r.Game.ActivePlayerIndex,LanCommandKind.EndTurn,out _),Is.True);
+            }
+            Assert.That(r.Game.Phase,Is.EqualTo(GamePhase.RewardChoice));Assert.That(r.StalledRemoteHumans(),Is.EqualTo(new ulong[]{2}));
+            Assert.That(Send(r,0,LanCommandKind.Acknowledge,out _),Is.True);Assert.That(r.Game.Phase,Is.EqualTo(GamePhase.RewardChoice));
+            r.Disconnect(2);Assert.That(r.Game.Phase,Is.EqualTo(GamePhase.Actions),"removing the last unacknowledged player resumes the game");
+            Assert.That(r.Game.Round,Is.EqualTo(5));
+        }
+        [Test] public void ClientCostLookupUsesOnlyHostComputedCosts()
+        {
+            var r=Start(2);var view=r.ViewFor(1);var card=view.hand[0];
+            for(int t=0;t<4;t++)Assert.That(view.EffectiveCost(card,t),Is.EqualTo(r.Game.EffectiveCost(1,r.Game.FindCard(Guid.Parse(card.guid)).Card,new EffectTarget{PlayerIndex=t})));
+            card.costs=null;Assert.That(view.EffectiveCost(card,0),Is.EqualTo(-1));Assert.That(view.EffectiveCost(view.hand[0],9),Is.EqualTo(-1));
+        }
         [Test] public void TwoThreeFourHumanAuthorityGamesFinishFortyRoundsWithRandomRewardsAndNoLostCards()
         {
             for(int humans=2;humans<=4;humans++) {

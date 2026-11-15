@@ -1,4 +1,3 @@
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -21,7 +20,8 @@ namespace Pilgrimage.UI
         }
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)] private static void Boot()
         {
-            if(Value("-pilgrimageLanSmoke")==null)return;
+            // Editor and Development Build only (runtime check replaces the deprecated DEVELOPMENT_BUILD define).
+            if((!Application.isEditor&&!Debug.isDebugBuild)||Value("-pilgrimageLanSmoke")==null)return;
             var demo=FindAnyObjectByType<DemoController>();if(demo!=null)demo.gameObject.AddComponent<LanSmokeHarness>();
         }
         private static string Value(string flag){var a=Environment.GetCommandLineArgs();int i=Array.IndexOf(a,flag);return i>=0&&i<a.Length-1?a[i+1]:null;}
@@ -102,4 +102,3 @@ namespace Pilgrimage.UI
         private IEnumerator Exit(){yield return new WaitForSecondsRealtime(1);Application.Quit();}
     }
 }
-#endif

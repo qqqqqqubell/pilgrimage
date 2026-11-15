@@ -34,8 +34,12 @@ namespace Pilgrimage.UI
         private AiSettings configuration;
         private long sequence, awaiting;
         private bool stopping, revealing, leaving;
-        private float deadline;
+        private bool? previousRunInBackground;
+        private float deadline, pendingSince;
         private const string Commands = "pilgrimage.command.v1", Views = "pilgrimage.view.v1";
+        private const int MaximumCommandCharacters = 4096;
+        // A lost or rejected-without-reply request must never lock the local UI forever.
+        private const float PendingTimeout = 6f;
         public static string LocalAddresses {
             get {
                 // Avoid Dns.GetHostName: Mono can fail converting Korean Windows computer names.
@@ -54,6 +58,7 @@ namespace Pilgrimage.UI
             if (manager != null || NetworkManager.Singleton != null) { error = "이미 네트워크 세션이 실행 중입니다."; return false; }
             if (port == 0 || (!host && (!IPAddress.TryParse(address, out var ip) || ip.AddressFamily != AddressFamily.InterNetwork || address == "0.0.0.0"))) { error = "올바른 IPv4 주소와 1~65535 포트를 입력하세요."; return false; }
             Port = port; Address = host ? LocalAddresses : address; configuration = ai ?? new AiSettings();
+            if (!previousRunInBackground.HasValue) previousRunInBackground = Application.runInBackground;
             Application.runInBackground = true;
             networkObject = new GameObject("Pilgrimage LAN Transport");
             // NGO requires a root object; this component owns and destroys it explicitly.
@@ -112,6 +117,10 @@ namespace Pilgrimage.UI
         private void Update()
         {
             if (manager == null || stopping || leaving) return;
+            if (Pending && Time.realtimeSinceStartup - pendingSince > PendingTimeout) {
+                Pending = false;
+                if (View != null) { View = new LanEnvelope { lobby = View.lobby, game = View.game, error = "호스트 응답이 없어 요청을 취소했습니다. 다시 시도하세요." }; Changed?.Invoke(View); }
+            }
             if (!Connected && Time.realtimeSinceStartup > deadline) { Fail("접속 시간 초과: 호스트 IP·포트와 LAN 연결을 확인하세요."); return; }
             if (!IsHost || Authority == null) return;
             if (!Authority.Busy && Authority.StepAi()) Publish();
@@ -134,27 +143,52 @@ namespace Pilgrimage.UI
         {
             if (View?.lobby == null || manager == null || stopping || leaving || Pending) return false;
             command.session = View.lobby.session; command.sequence = ++sequence; command.version = View.lobby.version; command.round = View.game?.round ?? 0;
-            if (command.kind == LanCommandKind.Play || command.kind == LanCommandKind.EndTurn || command.kind == LanCommandKind.Acknowledge) { Pending = true; awaiting = command.sequence; }
+            if (command.kind == LanCommandKind.Play || command.kind == LanCommandKind.EndTurn || command.kind == LanCommandKind.Acknowledge) { Pending = true; awaiting = command.sequence; pendingSince = Time.realtimeSinceStartup; }
             if (IsHost) Process(NetworkManager.ServerClientId, command);
             else SendJson(Commands, NetworkManager.ServerClientId, JsonUtility.ToJson(command));
             return true;
         }
         private void ReceiveCommand(ulong sender, FastBufferReader reader)
         {
-            if (!IsHost || reader.Length > 8192) return;
+            if (!IsHost || Authority == null) return;
             if (!requestWindow.TryGetValue(sender, out float time) || Time.realtimeSinceStartup-time>=1) { requestWindow[sender]=Time.realtimeSinceStartup; requestCount[sender]=0; }
             if (++requestCount[sender]>100) { manager.DisconnectClient(sender,"요청이 너무 많습니다."); return; }
-            try { reader.ReadValueSafe(out string json); if (json.Length <= 4096) Process(sender, JsonUtility.FromJson<LanCommand>(json)); }
-            catch (Exception e) when (e is ArgumentException || e is OverflowException || e is InvalidOperationException) { manager.DisconnectClient(sender, "잘못된 네트워크 요청"); }
+            // Strings are UTF-16 plus a 4-byte length prefix.
+            if (reader.Length > MaximumCommandCharacters * 2 + 16) { Reject(sender, 0, "요청이 너무 큽니다."); return; }
+            LanCommand command;
+            try {
+                reader.ReadValueSafe(out string json);
+                if (json == null || json.Length > MaximumCommandCharacters) { Reject(sender, 0, "요청이 너무 큽니다."); return; }
+                command = JsonUtility.FromJson<LanCommand>(json);
+            } catch (Exception e) { Debug.LogWarning("LAN: malformed command from " + sender + ": " + e.Message); manager.DisconnectClient(sender, "잘못된 네트워크 요청"); return; }
+            Process(sender, command);
+        }
+        private void Reject(ulong sender, long reply, string reason)
+            => Deliver(sender, new LanEnvelope { lobby = Authority.LobbyFor(sender), game = SafeView(sender), reply = reply, error = reason });
+        private LanGameView SafeView(ulong recipient)
+        {
+            try { return Authority.ViewFor(recipient); }
+            catch (Exception e) { Debug.LogException(e); return null; }
         }
         private void Process(ulong sender, LanCommand command)
         {
             int version = Authority.Version;
             bool started = Authority.Game != null;
-            bool ok = Authority.Submit(sender, command, out string reason, UnityEngine.Random.Range(1, int.MaxValue));
-            if(!started&&Authority.Game!=null)Debug.Log("LAN host started: faction seed="+Authority.AssignmentSeed+"; private game seed="+Authority.GameSeed);
+            bool ok; string reason;
+            // Any rule-code failure still produces a reply, so the sender's Pending lock is released.
+            try { ok = Authority.Submit(sender, command, out reason, UnityEngine.Random.Range(1, int.MaxValue)); }
+            catch (Exception e) { Debug.LogException(e); ok = false; reason = "호스트에서 요청을 처리하지 못했습니다. 다시 시도하세요."; }
+            if (!started && Authority.Game != null && Debug.isDebugBuild) Debug.Log("LAN host started: faction seed="+Authority.AssignmentSeed+"; private game seed="+Authority.GameSeed);
             if (Authority.Version != version) Publish();
-            Deliver(sender, new LanEnvelope { lobby = Authority.LobbyFor(sender), game = Authority.ViewFor(sender), reply = command?.sequence ?? 0, error = ok ? null : reason });
+            Deliver(sender, new LanEnvelope { lobby = Authority.LobbyFor(sender), game = SafeView(sender), reply = command?.sequence ?? 0, error = ok ? null : reason });
+        }
+        // Host-only: removes a remote human. During a game the seat is handed to the host AI.
+        public bool Kick(ulong connection)
+        {
+            if (!IsHost || Authority == null || stopping || leaving || connection == NetworkManager.ServerClientId) return false;
+            if (!Authority.Members.Any(m => m.Connection == connection)) return false;
+            if (manager.ConnectedClients.ContainsKey(connection)) manager.DisconnectClient(connection, "호스트가 방에서 내보냈습니다. 진행 중이던 좌석은 AI가 이어받습니다.");
+            Authority.Disconnect(connection); Publish(); return true;
         }
         private void ReceiveView(ulong sender, FastBufferReader reader)
         {
@@ -181,7 +215,7 @@ namespace Pilgrimage.UI
         private void Publish()
         {
             if (Authority == null || manager == null) return;
-            foreach (var member in Authority.Members.ToArray()) Deliver(member.Connection, new LanEnvelope { lobby = Authority.LobbyFor(member.Connection), game = Authority.ViewFor(member.Connection) });
+            foreach (var member in Authority.Members.ToArray()) Deliver(member.Connection, new LanEnvelope { lobby = Authority.LobbyFor(member.Connection), game = SafeView(member.Connection) });
         }
         private void Apply(LanEnvelope data)
         {
@@ -212,6 +246,7 @@ namespace Pilgrimage.UI
             }
             if (networkObject != null) Destroy(networkObject);
             manager = null; Authority = null;
+            if (previousRunInBackground.HasValue) { Application.runInBackground = previousRunInBackground.Value; previousRunInBackground = null; }
         }
         private void OnDestroy() => Shutdown();
     }
