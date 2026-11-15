@@ -8,11 +8,11 @@ namespace Pilgrimage.Tests
         [Test]
         public void EvangelismChangesOnlyActingPlayerAndAddsTwoDistinctFollowersToDeck()
         {
-            var game = new PrototypeGame(new PrototypeTestConfig());
+            var game = new PrototypeGame(new PrototypeTestConfig { startingOffering = 8 });
             PlayerState player = game.ActivePlayer;
             CardInstance card = player.Hand[0];
             Assert.That(game.TryPlay(0, card, out _), Is.True);
-            Assert.That(player.Offering, Is.EqualTo(4));
+            Assert.That(player.Offering, Is.EqualTo(0));
             Assert.That(player.Faith, Is.EqualTo(18));
             Assert.That(player.Doctrine, Is.EqualTo(20));
             Assert.That(game.Atheists, Is.EqualTo(18));
@@ -22,7 +22,7 @@ namespace Pilgrimage.Tests
             Assert.That(player.Deck[8].InstanceId, Is.Not.EqualTo(player.Deck[9].InstanceId));
             Assert.That(player.Hand.Count, Is.EqualTo(3));
             Assert.That(player.Discard.Single(), Is.SameAs(card));
-            Assert.That(game.Players[1].Offering, Is.EqualTo(5));
+            Assert.That(game.Players[1].Offering, Is.EqualTo(8));
             Assert.That(game.Players[1].Faith, Is.EqualTo(20));
             Assert.That(game.Players[1].Deck.Count, Is.EqualTo(8));
         }
@@ -33,8 +33,8 @@ namespace Pilgrimage.Tests
             var game = new PrototypeGame(new PrototypeTestConfig { startingOffering = 1 });
             Assert.That(game.TryPlay(0, game.ActivePlayer.Hand[1], out _), Is.True);
             Assert.That(game.ActivePlayer.Offering, Is.EqualTo(3));
-            Assert.That(game.ActivePlayer.Faith, Is.EqualTo(15));
-            Assert.That(game.ActivePlayer.Doctrine, Is.EqualTo(15));
+            Assert.That(game.ActivePlayer.Faith, Is.EqualTo(18));
+            Assert.That(game.ActivePlayer.Doctrine, Is.EqualTo(18));
             Assert.That(game.Atheists, Is.EqualTo(20));
         }
 
@@ -43,7 +43,7 @@ namespace Pilgrimage.Tests
         {
             var game = new PrototypeGame(new PrototypeTestConfig());
             Assert.That(game.TryPlay(0, game.ActivePlayer.Hand[2], out _), Is.True);
-            Assert.That(game.ActivePlayer.Offering, Is.EqualTo(4));
+            Assert.That(game.ActivePlayer.Offering, Is.EqualTo(5));
             Assert.That(game.ActivePlayer.Faith, Is.EqualTo(25));
             Assert.That(game.ActivePlayer.Doctrine, Is.EqualTo(25));
             Assert.That(game.Atheists, Is.EqualTo(20));
@@ -53,7 +53,7 @@ namespace Pilgrimage.Tests
         public void ZeroOfferingRejectsPaidCardsButAllowsFreeOfferingRequest()
         {
             var game = new PrototypeGame(new PrototypeTestConfig { startingOffering = 0 });
-            foreach (CardInstance card in game.ActivePlayer.Hand.Where(c => c.Definition.Id != CardId.RequestOffering).ToArray())
+            foreach (CardInstance card in game.ActivePlayer.Hand.Where(c => c.Definition.Id == CardId.Evangelism || c.Definition.Id == CardId.Follower).ToArray())
                 Assert.That(game.TryPlay(0, card, out _), Is.False);
             Assert.That(game.ActivePlayer.Offering, Is.Zero);
             Assert.That(game.ActivePlayer.Faith, Is.EqualTo(20));
@@ -81,14 +81,14 @@ namespace Pilgrimage.Tests
         [Test]
         public void WrongPlayerForeignCardAndAlreadyUsedCardAreRejected()
         {
-            var game = new PrototypeGame(new PrototypeTestConfig());
+            var game = new PrototypeGame(new PrototypeTestConfig { startingOffering = 8 });
             CardInstance card = game.ActivePlayer.Hand[0];
             Assert.That(game.TryPlay(1, game.Players[1].Hand[0], out _), Is.False);
             Assert.That(game.TryPlay(0, new CardInstance(CardId.Evangelism), out _), Is.False);
             Assert.That(game.TryPlay(0, null, out _), Is.False);
             Assert.That(game.TryPlay(0, card, out _), Is.True);
             Assert.That(game.TryPlay(0, card, out _), Is.False);
-            Assert.That(game.ActivePlayer.Offering, Is.EqualTo(4));
+            Assert.That(game.ActivePlayer.Offering, Is.EqualTo(0));
             Assert.That(game.ActivePlayer.Discard.Count, Is.EqualTo(1));
         }
 
@@ -112,13 +112,13 @@ namespace Pilgrimage.Tests
         public void TurnLimitResetsAndOptionalOfferingGrantIsApplied()
         {
             var game = new PrototypeGame(new PrototypeTestConfig {
-                playerCount = 1, maxCardsPerTurn = 1, offeringOnTurnStart = 2, drawOnTurnStart = 0
+                startingOffering = 8, playerCount = 1, maxCardsPerTurn = 1, offeringOnTurnStart = 2, drawOnTurnStart = 0
             });
             Assert.That(game.TryPlay(0, game.ActivePlayer.Hand[0], out _), Is.True);
             Assert.That(game.TryPlay(0, game.ActivePlayer.Hand[0], out _), Is.False);
             game.EndTurn();
             Assert.That(game.CardsPlayedThisTurn, Is.Zero);
-            Assert.That(game.ActivePlayer.Offering, Is.EqualTo(6));
+            Assert.That(game.ActivePlayer.Offering, Is.EqualTo(2));
             Assert.That(game.TryPlay(0, game.ActivePlayer.Hand[0], out _), Is.True);
         }
 
@@ -154,14 +154,14 @@ namespace Pilgrimage.Tests
             foreach (bool clamp in new[] { false, true })
             {
                 var game = new PrototypeGame(new PrototypeTestConfig {
-                    startingFaith = 0, startingDoctrine = 0, startingAtheists = 1,
+                    startingOffering = 20, startingFaith = 0, startingDoctrine = 0, startingAtheists = 1,
                     clampEffectValuesAtZero = clamp
                 });
                 game.TryPlay(0, game.ActivePlayer.Hand[0], out _);
                 Assert.That(game.ActivePlayer.Faith, Is.EqualTo(clamp ? 0 : -2));
                 Assert.That(game.Atheists, Is.EqualTo(clamp ? 0 : -1));
                 game.TryPlay(0, game.ActivePlayer.Hand[0], out _);
-                Assert.That(game.ActivePlayer.Doctrine, Is.EqualTo(clamp ? 0 : -5));
+                Assert.That(game.ActivePlayer.Doctrine, Is.EqualTo(clamp ? 0 : -2));
             }
         }
 

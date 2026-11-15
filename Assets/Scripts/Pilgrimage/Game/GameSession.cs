@@ -89,8 +89,9 @@ namespace Pilgrimage
         private readonly Random random;
         private readonly Random effectRandom;
         public TimedEffectPolicy EffectPolicy { get; }
+        public bool IsNetworkGame { get; }
         public FactionId HumanFaction => players[0].Faction;
-        private readonly bool accumulate, requireAtheists;
+        private readonly bool accumulate;
         public bool RequireFullFollowerTargets { get; }
         public bool AllowSelfAsOpponentTarget { get; }
         public bool RequiresAtheists => true; // Final population rules require sufficient people for creation.
@@ -113,16 +114,19 @@ namespace Pilgrimage
         public GameSession(DemoRuleAssumptions assumptions = null,
             IEnumerable<CardDefinition> additionalCards = null,
             IDictionary<string, ICardEffectHandler> additionalHandlers = null,
-            FactionId humanFaction = FactionId.Poverty)
+            FactionId humanFaction = FactionId.Poverty,
+            IReadOnlyList<FactionId> factionSeats = null, bool networkControlled = false)
         {
             var rules = assumptions ?? new DemoRuleAssumptions();
             random = new Random(rules.randomSeed);
             effectRandom = new Random(rules.randomSeed ^ 0x51A7);
             rewardRandom = new Random(rules.randomSeed ^ 0x7E19);
             EffectPolicy = (rules.timedEffects ?? new TimedEffectPolicy()).Copy();
-            var seats = FactionSetup.Seats(humanFaction);
+            IsNetworkGame = networkControlled;
+            var seats = factionSeats == null ? FactionSetup.Seats(humanFaction) : factionSeats.ToArray();
+            if (seats.Length != PlayerCount || seats.Distinct().Count() != PlayerCount || seats.Any(f => !FactionSetup.IsPlayable(f)))
+                throw new ArgumentException("네 교단은 좌석에 중복 없이 배정되어야 합니다.");
             accumulate = rules.accumulateOfferingBetweenRounds;
-            requireAtheists = rules.rejectWhenAtheistsInsufficient;
             RequireFullFollowerTargets = rules.requireFullFollowerTargets;
             AllowSelfAsOpponentTarget = rules.allowSelfAsOpponentTarget;
             maxCards = Math.Max(0, rules.maxCardsPerActionTurn);
@@ -260,11 +264,7 @@ namespace Pilgrimage
             return EligibleRewards(0, CurrentRewardKind);
         }
 
-        public bool ChooseReward(int player, CardId id)
-        {
-            // Compatibility only: the supplied ID never changes the already rolled reward.
-            return AcknowledgeRewards(player);
-        }
+
 
         public bool DeferMissingReward(int player)
         {
@@ -337,8 +337,9 @@ namespace Pilgrimage
                 }
                 if (Round != 1) player.Offering = TimedCardEffects.SaturatingAdd(player.Offering, PreviewRoundIncome(owner));
             }
-            for (int owner = 0; owner < PlayerCount; owner++)
+            for (int offset = 0; offset < PlayerCount; offset++)
             {
+                int owner = EffectPolicy.loansResolveInLeaderOrder ? (FirstPlayerIndex + offset) % PlayerCount : offset;
                 PlayerState player = players[owner];
                 TimedCardEffects.ResolveLoans(this, owner);
                 TimedCardEffects.CompleteIncome(player);

@@ -9,6 +9,7 @@ namespace Pilgrimage
 
         public static void ReplaceHand(GameSession game, int owner, System.Collections.Generic.IEnumerable<CardId> ids)
         {
+            RequireOffline(game);
             // Explicit development operation, preserving existing physical identities.
             var definitions = System.Linq.Enumerable.ToArray(ids);
             foreach (var id in definitions) CardCatalog.Get(id); // Validate before mutation.
@@ -33,6 +34,7 @@ namespace Pilgrimage
         }
         public static CardInstance GiveCard(GameSession game, int owner, CardId id, CardPile pile = CardPile.Hand)
         {
+            RequireOffline(game);
             if (owner < 0 || owner >= GameSession.PlayerCount) throw new ArgumentOutOfRangeException(nameof(owner));
             var card = new CardInstance(id);
             GameSession.Pile(game.Players[owner], pile).Add(card);
@@ -41,11 +43,17 @@ namespace Pilgrimage
         }
         public static void SetResources(GameSession game, int owner, int offering, int faith, int doctrine, int churchProperty = 0)
         {
+            RequireOffline(game);
             PlayerState player = game.Players[owner];
             player.Offering = Math.Max(0, offering);
             player.Faith = Math.Max(0, Math.Min(100, faith));
             player.Doctrine = Math.Max(0, Math.Min(100, doctrine));
             player.ChurchProperty = churchProperty;
+        }
+        private static void RequireOffline(GameSession game)
+        {
+            if (game == null) throw new ArgumentNullException(nameof(game));
+            if (game.IsNetworkGame) throw new InvalidOperationException("LAN 게임에서는 디버그 변경을 허용하지 않습니다.");
         }
     }
 }

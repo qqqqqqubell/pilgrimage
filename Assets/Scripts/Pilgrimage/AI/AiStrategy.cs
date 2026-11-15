@@ -42,6 +42,7 @@ namespace Pilgrimage
         public float savingPenalty = 0.35f;
         public float thresholdRiskMultiplier = 3;
         public float resourceUnlockWeight = 0.25f;
+        public float thresholdCrossingValue = 6;
         public AiWeights defaultWeights = new AiWeights();
         public FactionAiProfile[] factions = {
             new FactionAiProfile { faction = FactionId.Poverty, weights = new AiWeights { followers = 10, futureCards = 2 } },
@@ -91,6 +92,7 @@ namespace Pilgrimage
         public bool InterestUsed { get; }
         public int OwnWitchHuntTargets { get; }
         public int OwnRoundIncome { get; }
+        public int NaturalDecay { get; }
         public bool HasDecreaseProtection { get; }
         public double FaithDecreaseMultiplier { get; }
         public double DoctrineDecreaseMultiplier { get; }
@@ -118,6 +120,7 @@ namespace Pilgrimage
             InterestUsed = game.HasUsedInterest(actor);
             OwnWitchHuntTargets = SessionCardEffects.WitchHuntTargets(game, actor).Count();
             OwnRoundIncome = game.PreviewRoundIncome(actor);
+            NaturalDecay = game.EffectPolicy.remodelingAffectsNaturalDecay ? -TimedCardEffects.StatChange(own, -2, false) : 2;
             HasDecreaseProtection = own.TimedEffects.Any(e => e.Kind == TimedEffectKind.PreventDecrease);
             FaithDecreaseMultiplier = own.Statuses.Any(e => e.Protection == EffectProtection.FaithChanges) ? 0 : -(double)TimedCardEffects.StatChange(own, -1);
             DoctrineDecreaseMultiplier = own.Statuses.Any(e => e.Protection == EffectProtection.DoctrineChanges) ? 0 : -(double)TimedCardEffects.StatChange(own, -1);
@@ -201,7 +204,7 @@ namespace Pilgrimage
                     {
                         float reserve = 0;
                         foreach (var expensive in view.Hand.Where(h => h.Definition.IsPlayable && h.Definition.Implementation == EffectImplementation.Implemented &&
-                            h.Definition.Cost > view.Self.Offering && h.Definition.Cost <= view.Self.Offering + view.OwnRoundIncome * Math.Max(0, settings.savingHorizon)))
+                            h.Definition.Cost > view.Self.Offering && h.Definition.Cost <= view.Self.Offering + view.OwnRoundIncome * Math.Max(0, settings.savingHorizon) && PublicConditions(view,h.Definition)))
                             reserve = Math.Max(reserve, Evaluate(view, expensive.Definition, target, expensive.Definition.Cost, settings.For(view.Self.Faction)));
                         score -= reserve * Math.Max(0, settings.savingPenalty);
                     }
@@ -271,8 +274,8 @@ namespace Pilgrimage
                     future++; break;
                 case CardId.HeresyJudgment:
                     if (target.Doctrine >= 30) disruption = Math.Min(target.Doctrine, cost) / 10f;
-                    else disruption = (cost - 5) / 5 + 1;
-                    future++; break;
+                    else disruption = Math.Min(target.Followers, (cost - 5) / 5 + 1);
+                    if (disruption > 0) future++; break;
                 case CardId.CallOfFur: disruption = Math.Min(2, target.Followers); faction++; break;
                 case CardId.MassAgitation: disruption = v.Players.Where(p => p.Index != v.Actor).Sum(p => Math.Min(40, p.Faith) + Math.Min(40, p.Doctrine)) / 10f; break;
                 case CardId.AreaCleansing:
@@ -282,8 +285,8 @@ namespace Pilgrimage
                     disruption = v.Players.Where(p => p.Index != v.Actor).Sum(p => Math.Min(20, p.Faith) + Math.Min(20, p.Doctrine)) / 10f;
                     faction++; break;
                 case CardId.Heretic: followers = 1; break;
-                case CardId.ClergyTraining: future = 2; break;
-                case CardId.Preaching: future = 1; break;
+                case CardId.ClergyTraining: future = v.Atheists >= 2 ? 2 : 0; break;
+                case CardId.Preaching: future = v.Atheists >= 2 ? 1 : 0; break;
                 case CardId.BondOfFaith: followers = target.Index == v.Actor ? 0 : -Math.Min(1, v.OwnDeckFollowers); break;
                 case CardId.AggressiveMission: followers = 1; disruption = 1; break;
                 case CardId.PoorRelief: followers = target.Faith <= 20 ? 3 : 2; disruption = followers; break;
@@ -306,6 +309,16 @@ namespace Pilgrimage
                 // our own congregation as disruption of an opponent.
                 switch (c.Id)
                 {
+                    case CardId.InterfaithLoan: money = 0; break;
+                    case CardId.HeresyJudgment:
+                        disruption = 0;
+                        if (v.Self.Doctrine >= 30) doctrine = -cost;
+                        else followers = -Math.Min(v.OwnDeckFollowers, (cost - 5) / 5 + 1);
+                        break;
+                    case CardId.CallOfFur:
+                        disruption = 0;
+                        if (v.Self.Faction != FactionId.Fur) { followers = -Math.Min(v.Self.Followers, v.Self.HandCount + 1); faction = 0; }
+                        break;
                     case CardId.PublicDenunciation: followers = -Math.Min(1, v.OwnDeckFollowers); disruption = 0; break;
                     case CardId.Reaper: followers = -Math.Min(2, v.OwnDeckFollowers); disruption = 0; break;
                     case CardId.AggressiveMission: followers = 0; disruption = 0; break;
@@ -315,6 +328,7 @@ namespace Pilgrimage
                     case CardId.FalseRevelation: faith = -10; doctrine = -10; disruption = 0; break;
                 }
             }
+            if (remainingRounds == 0) future = 0;
             // Do not spend resources on capped statistics or effects with no useful gain.
             if (faith < 0) faith *= (float)v.FaithDecreaseMultiplier;
             if (doctrine < 0) doctrine *= (float)v.DoctrineDecreaseMultiplier;
@@ -325,27 +339,25 @@ namespace Pilgrimage
             if (v.Self.Faith <= 32) faithPriority = Math.Max(faithPriority, settings.thresholdRiskMultiplier);
             if (v.Self.Doctrine <= 32) doctrinePriority = Math.Max(doctrinePriority, settings.thresholdRiskMultiplier);
             float score = followers * w.followers + faith * w.faith * faithPriority + doctrine * w.doctrine * doctrinePriority + money * w.offering + disruption * w.disruption + faction * w.factionAbility + future * w.futureCards - cost * w.cost;
+            foreach (int threshold in new[] { 10, 20, 30 })
+            {
+                bool beforeFaith = v.Self.Faith - v.NaturalDecay <= threshold, afterFaith = v.Self.Faith + faith - v.NaturalDecay <= threshold;
+                bool beforeDoctrine = v.Self.Doctrine - v.NaturalDecay <= threshold, afterDoctrine = v.Self.Doctrine + doctrine - v.NaturalDecay <= threshold;
+                if (beforeFaith != afterFaith) score += (beforeFaith ? 1 : -1) * settings.thresholdCrossingValue;
+                if (beforeDoctrine != afterDoctrine) score += (beforeDoctrine ? 1 : -1) * settings.thresholdCrossingValue;
+            }
             if (c.OfferingGain > 0 && settings.resourceUnlockWeight > 0)
             {
                 float unlocked = 0;
                 foreach (var funded in v.Hand.Where(h => h.Definition.IsPlayable && h.Definition.OfferingGain == 0 &&
-                    h.Definition.Cost > v.Self.Offering && h.Definition.Cost <= v.Self.Offering + c.OfferingGain))
+                    h.Definition.Cost > v.Self.Offering && h.Definition.Cost <= v.Self.Offering + c.OfferingGain && PublicConditions(v,h.Definition)))
                     unlocked = Math.Max(unlocked, Evaluate(v, funded.Definition, target, funded.Definition.Cost, w));
                 score += unlocked * settings.resourceUnlockWeight;
             }
             return score;
         }
 
-        public CardDefinition ChooseReward(AiObservation view, IReadOnlyList<CardDefinition> options)
-        {
-            var usable = options.Where(c => c.Implementation == EffectImplementation.Implemented).ToArray();
-            if (usable.Length == 0) return null;
-            var weights = settings.For(view.Self.Faction);
-            var scored = usable.Select(c => new { Card = c, Score = c.CountsAsFollower ? weights.followers : Evaluate(view, c, view.Players[(view.Actor + 1) % 4], Math.Max(0, c.Cost), weights) }).ToArray();
-            float best = scored.Max(c => c.Score);
-            var close = scored.Where(c => c.Score >= best - Math.Max(0, settings.similarScoreWindow)).ToArray();
-            return close[random.Next(close.Length)].Card;
-        }
+
     }
 
     // Broker checks every proposed action/target through the human legality path.

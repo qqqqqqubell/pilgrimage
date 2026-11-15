@@ -18,7 +18,7 @@ namespace Pilgrimage.UI
         public GameSession Game { get; private set; }
         public bool IsAnimating { get; private set; }
         public bool IsDetailOpen => modal != null && modal.gameObject.activeSelf;
-        public bool CanInteract => Game != null && !IsFactionSelectionOpen && !IsAnimating && !IsDetailOpen && !IsAiRunning && !IsLabPanelOpen && !IsCardPickerOpen;
+        public bool CanInteract => (IsLanMode ? LanView != null && !LanView.busy && Network != null && !Network.Pending : Game != null) && !IsModeSelectionOpen && !IsFactionSelectionOpen && !IsAnimating && !IsDetailOpen && !IsAiRunning && !IsLabPanelOpen && !IsCardPickerOpen;
         public bool IsAiRunning { get; private set; }
         public CardDefinition RevealedAiCard { get; private set; }
         // Presentation reference only. The physical card remains in exactly one model pile.
@@ -57,6 +57,7 @@ namespace Pilgrimage.UI
             aiSettings = settings != null && settings.ai != null ? settings.ai : new AiSettings();
             BuildUI();
             BuildFactionSelection();
+            BuildModeSelection();
         }
 
         private void InitializeAiPlayers()
@@ -189,6 +190,7 @@ namespace Pilgrimage.UI
 
         private void Update()
         {
+            if (IsLanMode) { UpdateLanInput(); return; }
             if (Game == null || IsAnimating || IsAiRunning) return;
             if (IsLabPanelOpen || IsCardPickerOpen)
             {
@@ -248,7 +250,11 @@ namespace Pilgrimage.UI
             CardView view = handViews.FirstOrDefault(v => v.Card.InstanceId == SelectedCardId);
             if (view == null) { Feedback("먼저 카드를 선택하세요."); return; }
             CardDefinition def = view.Card.Definition;
-            OpenDetail(CardPresentation.Detail(def));
+            if (IsLanMode) { LanDetail(view.Card); return; }
+            string detail = CardPresentation.Detail(def);
+            if (def.Id == CardId.RefusingFollower) detail += "\n\n변환까지 남은 정산: " + Game.RefusingTurns(view.Card.InstanceId);
+            if (def.Id == CardId.HeresyJudgment) detail += "\n\n현재 누적 사용: " + Game.Players[0].JudgmentUses + " · 현재 헌금 비용: " + Game.EffectiveCost(0, view.Card, new EffectTarget { PlayerIndex = targetPlayer });
+            OpenDetail(detail);
         }
 
         private void OpenDetail(string text)
@@ -270,6 +276,7 @@ namespace Pilgrimage.UI
         public void PlaySelected()
         {
             if (!CanInteract || !SelectedCardId.HasValue) return;
+            if (IsLanMode) { PlayLanSelected(); return; }
             Guid id = SelectedCardId.Value;
             if (Game.Players[0].Hand.FirstOrDefault(c => c.InstanceId == id)?.Definition.Target == TargetKind.Card)
             { OpenRemovalPicker(id); return; }
@@ -278,6 +285,7 @@ namespace Pilgrimage.UI
 
         private void ExecutePlayerCard(Guid id, EffectTarget target)
         {
+            if (IsLanMode) { SendLanPlay(id, target); return; }
             CardDefinition definition = Game.Players[0].Hand.FirstOrDefault(c => c.InstanceId == id)?.Definition;
             int beforeOffering = Game.Players[0].Offering, beforeFollowers = Game.Players[0].FollowerCount;
             int beforeFaith = Game.Players[0].Faith, beforeDoctrine = Game.Players[0].Doctrine;
@@ -315,6 +323,7 @@ namespace Pilgrimage.UI
 
         private void Refresh()
         {
+            if (IsLanMode) { RefreshLanGame(); return; }
             if (Game == null) return;
             for (int i = 0; i < 4; i++)
             {
@@ -335,7 +344,9 @@ namespace Pilgrimage.UI
                 if (i > 0) RefreshBacks(i);
             }
             roundText.text = $"ROUND {Game.Round:00} / 40     무신론자 {Game.Atheists}";
-            activeText.text = Game.Phase == GamePhase.Actions ? Game.Players[Game.ActivePlayerIndex].Name + (Game.ActivePlayerIndex == 0 ? "\n내 차례" : "\nAI 차례") : Game.Phase == GamePhase.RewardChoice ? "보상 선택" : "게임 종료";
+            activeText.text = Game.Phase == GamePhase.Actions ? Game.Players[Game.ActivePlayerIndex].Name + (Game.ActivePlayerIndex == 0 ? "\n내 차례" : "\nAI 차례") : Game.Phase == GamePhase.RewardChoice ? "카드 획득 결과" : "승리\n" + string.Join(" · ", Game.Winners.Select(i => Game.Players[i].Name));
+            activeText.enableAutoSizing = true; activeText.fontSizeMin = 14; activeText.fontSizeMax = 26;
+            if (Game.Phase == GamePhase.Finished) messageText.text = "최다 신도 " + Game.Players.Max(p => p.FollowerCount) + "명\n전체 인원 " + Game.PopulationTotal + "명";
             if (Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0) targetLabel.text = Game.Players[targetPlayer].Name;
             endButton.interactable = !IsAnimating && !IsAiRunning && Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0;
             foreach (CardView view in handViews) { view.gameObject.SetActive(false); Destroy(view.gameObject); }
@@ -394,18 +405,21 @@ namespace Pilgrimage.UI
 
         private void EndLocalTurn()
         {
+            if (IsLanMode) { if (LanCanAct) Network.Send(new LanCommand { kind = LanCommandKind.EndTurn }); return; }
             if (!CanInteract || Game.ActivePlayerIndex != 0) return;
             Game.EndActionTurn(0); Log(Game.LastMessage); SelectedCardId = null; Refresh();
         }
 
         public void DebugOpponentStep()
         {
+            if (IsLanMode) return;
             if (IsCardLab || !CanInteract || Game.Phase != GamePhase.Actions || Game.ActivePlayerIndex == 0) return;
             StartCoroutine(RunAi());
         }
 
         private IEnumerator RunAi()
         {
+            if (IsLanMode) yield break;
             if (IsAiRunning) yield break;
             IsAiRunning = true;
             try
@@ -464,15 +478,17 @@ namespace Pilgrimage.UI
 
         private void ResetGame()
         {
+            if (IsLanMode) return;
             if (!CanInteract) return;
             SelectedCardId = null; RevealedAiCard = null; RevealedCardInstanceId = null; revealedCard.gameObject.SetActive(false); logs.Clear(); logText.text = ""; messageText.text = "";
             if (IsCardLab) { Game = GameDebugTools.CreateCardLab(Game.HumanFaction); Refresh(); }
             else { rewardRoot.gameObject.SetActive(false); ShowFactionSelection(); }
         }
-        private void CycleTarget() { if (!CanInteract) return; targetPlayer = Game.AllowSelfAsOpponentTarget ? (targetPlayer + 1) % 4 : targetPlayer % 3 + 1; targetLabel.text = "효과 대상: " + Game.Players[targetPlayer].Name; }
+        private void CycleTarget() { if (!CanInteract) return; if (IsLanMode) { do { targetPlayer = (targetPlayer + 1) % 4; } while (targetPlayer == LocalSeat); targetLabel.text = LanView.players[targetPlayer].name; return; } targetPlayer = Game.AllowSelfAsOpponentTarget ? (targetPlayer + 1) % 4 : targetPlayer % 3 + 1; targetLabel.text = "효과 대상: " + Game.Players[targetPlayer].Name; }
         private void ShowPlayerStats(int index)
         {
             if (!CanInteract) return;
+            if (IsLanMode) { ShowLanStats(index); return; }
             PlayerState player = Game.Players[index];
             string effects = string.Join("\n", player.TimedEffects.Select(e => CardCatalog.Get(e.Source).Name + " · 남은 정산 " + e.RemainingRoundStarts + "회"));
             OpenDetail($"<size=38>{player.Name}</size>\n\n신앙심: {player.Faith} / 100\n교리 정합성: {player.Doctrine} / 100\n헌금: {player.Offering}\n신도 수: {player.FollowerCount}\n덱: {player.Deck.Count}장 / 손패: {player.Hand.Count}장 / 버린 더미: {player.Discard.Count}장\n교회 재산: {player.ChurchProperty}\n다음 라운드 수입: {Game.PreviewRoundIncome(index)}\n지속 효과: {player.Statuses.Count + player.TimedEffects.Count}개\n{effects}\n\n상대 손패·덱의 카드 이름은 공개하지 않습니다.");
@@ -480,6 +496,7 @@ namespace Pilgrimage.UI
         private void ShowCatalog()
         {
             if (!CanInteract) return;
+            if (IsLanMode) { OpenDetail("카드 도감\n\n" + string.Join("\n\n────────\n\n", CardCatalog.All.Select(CardPresentation.Detail))); return; }
             OpenDetail($"<size=36>카드 도감 · {Game.Catalog.Count}종</size>\n\n" + string.Join("\n\n────────\n\n", Game.Catalog.Select(CardPresentation.Detail)));
             grantDebugButton.gameObject.SetActive(DevelopmentToolsAvailable);
         }
@@ -491,6 +508,7 @@ namespace Pilgrimage.UI
         private void ShowMenu()
         {
             if (!CanInteract) return;
+            if (IsLanMode) { OpenDetail("LAN 게임\n\n← / → 선택 · Space / 우클릭 상세보기\nEnter / 더블클릭 사용 · ESC 닫기\n\n방을 나가려면 좌측 상단 LAN 나가기를 누르세요.\n호스트가 나가면 방이 종료됩니다.\n진행 중 재접속과 호스트 이전은 지원하지 않습니다."); return; }
             OpenDetail("<size=36>메뉴 · 조작 안내</size>\n\n← / → : 카드 선택\nSpace / 우클릭 : 상세보기\nEnter / 더블클릭 : 사용\nESC : 닫기\n\n금($): 헌금 · 믿: 신앙심 · 율: 교리 정합성 · 人: 신도 · 패: 손패\n\nAI 가중치와 공개 간격은 Demo Settings에서 변경합니다.\n\n최근 기록\n" + string.Join("\n", logs));
             debugButton.gameObject.SetActive(true); manualAiButton.gameObject.SetActive(true);
         }
@@ -531,6 +549,7 @@ namespace Pilgrimage.UI
         }
         private void OnDestroy()
         {
+            if (Network != null) Network.Shutdown();
             if (ownedEventSystem != null) Destroy(ownedEventSystem);
             if (ownsFont && font != null)
             {
@@ -540,6 +559,6 @@ namespace Pilgrimage.UI
             }
         }
         private void OnDisable() { StopAllCoroutines(); IsAiRunning = false; IsAnimating = false; }
-        private void OnEnable() { if (Game != null && root != null) Refresh(); }
+        private void OnEnable() { if ((Game != null || LanView != null) && root != null) Refresh(); }
     }
 }

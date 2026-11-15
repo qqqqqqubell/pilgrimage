@@ -27,7 +27,7 @@ namespace Pilgrimage.UI
 
         public bool ChooseFaction(FactionId faction)
         {
-            if (!IsFactionSelectionOpen || Game != null || !FactionSetup.IsPlayable(faction)) return false;
+            if (IsLanMode || IsModeSelectionOpen || !IsFactionSelectionOpen || Game != null || !FactionSetup.IsPlayable(faction)) return false;
             Game = new GameSession(settings != null ? settings.assumptions : null, humanFaction: faction);
             factionSelection.gameObject.SetActive(false);
             targetPlayer = 1;

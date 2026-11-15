@@ -47,7 +47,7 @@ namespace Pilgrimage.UI
                 if (CardPresentation.CostLabel(def) != "") owner.Text(frame, "Cost", CardPresentation.CostLabel(def), new Vector2(0, -88), new Vector2(177, 30), 20);
                 if (CardPresentation.Availability(def) != "") owner.Text(frame, "Play State", "사용 불가", new Vector2(0, -116), new Vector2(180, 24), 13);
             }
-            FanSlot slot = HandFanLayout.Calculate(index, owner.Game.Players[0].Hand.Count, width, 200);
+            FanSlot slot = HandFanLayout.Calculate(index, owner.LocalHandCount, width, 200);
             restPosition = new Vector2(slot.X, slot.Y);
             restAngle = slot.Angle;
             SetHighlight(false);

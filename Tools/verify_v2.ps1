@@ -1,4 +1,4 @@
-param([string]$EditorData = 'E:\Unity\Editor\6000.6.9f1\Editor\Data')
+param([string]$EditorData = 'E:\Unity\Editor\6000.6.9f1\Editor\Data', [string]$ReferenceProject = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $projectRoot
@@ -14,7 +14,8 @@ $runtimeSources = @(Get-ChildItem 'Assets\Scripts\Pilgrimage' -Recurse -Filter '
 $uiSources = @(Get-ChildItem 'Assets\Scripts\Pilgrimage\UI' -Recurse -Filter '*.cs' | ForEach-Object { $_.FullName })
 $editorSources = @(Get-ChildItem 'Assets\Scripts\Pilgrimage\Editor' -Filter '*.cs' | ForEach-Object { $_.FullName })
 $testSources = @(Get-ChildItem 'Assets\Tests\EditMode' -Filter '*.cs' | ForEach-Object { $_.FullName })
-$uiRefs = @('UnityEngine.UI.dll', 'Unity.TextMeshPro.dll', 'Unity.InputSystem.dll') | ForEach-Object { '-r:' + (Join-Path $projectRoot ('Library\ScriptAssemblies\' + $_)) }
+if (!$ReferenceProject) { $ReferenceProject = $projectRoot }
+$uiRefs = @('UnityEngine.UI.dll', 'Unity.TextMeshPro.dll', 'Unity.InputSystem.dll', 'Unity.Netcode.Runtime.dll', 'Unity.Networking.Transport.dll', 'Unity.Collections.dll') | ForEach-Object { '-r:' + (Join-Path $ReferenceProject ('Library\ScriptAssemblies\' + $_)) }
 $runtimeDll = Join-Path $validationDir 'Pilgrimage.Runtime.dll'
 $uiDll = Join-Path $validationDir 'Pilgrimage.UI.dll'
 & $mono $compiler -nologo -noconfig -nostdlib+ -target:library ('-out:' + $runtimeDll) $baseRefs $engineRefs $runtimeSources
@@ -38,7 +39,7 @@ using NUnit.Framework;
 public static class ValidationRunner {
   public static int Main() {
     int passed = 0, failed = 0;
-    foreach (Type fixture in new[] { typeof(Pilgrimage.Tests.CardPrototypeTests), typeof(Pilgrimage.Tests.GameSessionTests), typeof(Pilgrimage.Tests.AiStrategyTests), typeof(Pilgrimage.Tests.ExpansionTests) }) {
+    foreach (Type fixture in new[] { typeof(Pilgrimage.Tests.CardPrototypeTests), typeof(Pilgrimage.Tests.GameSessionTests), typeof(Pilgrimage.Tests.AiStrategyTests), typeof(Pilgrimage.Tests.ExpansionTests), typeof(Pilgrimage.Tests.LanRoomTests) }) {
       object instance = Activator.CreateInstance(fixture);
       foreach (MethodInfo test in fixture.GetMethods()) {
         if (!Attribute.IsDefined(test, typeof(TestAttribute))) continue;

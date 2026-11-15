@@ -14,7 +14,8 @@ namespace Pilgrimage
         public static string PlayerText(string text)
         {
             if (string.IsNullOrWhiteSpace(text) || text == "미정") return "";
-            return string.Join("\n", text.Split('\n').Where(line => !DevelopmentMarkers.Any(marker => line.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0)));
+            return string.Join("\n", text.Split('\n').Where(line => !DevelopmentMarkers.Any(marker => line.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0)))
+                .Replace("교리 접합성", "교리 정합성").Replace("현금", "헌금");
         }
         public static string CostLabel(CardDefinition card)
         {

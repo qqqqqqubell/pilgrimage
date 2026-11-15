@@ -21,6 +21,8 @@ namespace Pilgrimage
         public bool judgmentIncludesCurrentUse = false;
         public LoanShortfallPolicy loanShortfall = LoanShortfallPolicy.CollectAvailable;
         public bool furCallConvertsAllHandFollowers = true;
+        public bool loansResolveInLeaderOrder = true;
+        public bool judgmentRequiresFullFollowers = false;
         internal TimedEffectPolicy Copy() => (TimedEffectPolicy)MemberwiseClone();
         internal int Duration(int turns) => Math.Max(1, turns - (durationIncludesActivationRound ? 1 : 0));
     }

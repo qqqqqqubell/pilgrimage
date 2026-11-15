@@ -37,6 +37,8 @@ namespace Pilgrimage.Tests
             keyboard = InputSystem.AddDevice<Keyboard>();
             demo = new GameObject("Demo Under Test").AddComponent<DemoController>();
             yield return null;
+            Assert.That(demo.IsModeSelectionOpen, Is.True);
+            demo.SelectSinglePlayer();
             Assert.That(demo.ChooseFaction(FactionId.Poverty), Is.True);
             yield return null;
         }
@@ -68,12 +70,12 @@ namespace Pilgrimage.Tests
         [UnityTest] public IEnumerator FourPlayersFiveFanCardsAndOnlyAnonymousOpponentBacks()
         {
             Assert.That(demo.Game.Players.Count, Is.EqualTo(4));
-            Assert.That(demo.HandViews.Count, Is.EqualTo(5));
+            Assert.That(demo.HandViews.Count, Is.EqualTo(4));
             var backs = demo.GetComponentsInChildren<RectTransform>().Where(t => t.name == "Private Card Back").ToArray();
-            Assert.That(backs.Length, Is.EqualTo(15));
+            Assert.That(backs.Length, Is.EqualTo(12));
             Assert.That(backs.All(t => t.GetComponent<CardView>() == null), Is.True);
             Assert.That(backs.SelectMany(t => t.GetComponentsInChildren<TMP_Text>()).All(t => t.text == "?"), Is.True);
-            Assert.That(demo.HandViews.Select(v => v.Rect.anchoredPosition.x).Distinct().Count(), Is.EqualTo(5));
+            Assert.That(demo.HandViews.Select(v => v.Rect.anchoredPosition.x).Distinct().Count(), Is.EqualTo(4));
             Assert.That(demo.GetComponentInChildren<CanvasScaler>().referenceResolution, Is.EqualTo(new Vector2(1920, 1080)));
             Assert.That(demo.GetComponentInChildren<TMP_Text>().font.HasCharacters("신앙심 헌금", out uint[] missing, true, true), Is.True, "Korean font glyphs must be available.");
             yield return null;
@@ -109,7 +111,7 @@ namespace Pilgrimage.Tests
             ExecuteEvents.Execute(view.gameObject, click, ExecuteEvents.pointerClickHandler);
             Assert.That(demo.IsAnimating, Is.True);
             demo.PlaySelected(); // repeated input while animation is active
-            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(4));
+            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(5));
             Assert.That(demo.Game.Players[0].Faith, Is.EqualTo(55));
             Assert.That(demo.Game.Players[0].Hand.Count, Is.EqualTo(hand - 1));
             Assert.That(demo.Game.FindCard(worship.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
@@ -124,15 +126,15 @@ namespace Pilgrimage.Tests
         {
             demo.EnterCardLab(); demo.SetLabHand(new[] { CardId.Indulgence });
             var game = demo.Game; var player = game.Players[0]; var source = player.Hand.Single();
-            var followers = player.Deck.Where(c => c.Definition.Id == CardId.Follower).Take(2).ToArray();
+            var followers = player.Deck.Where(c => c.Definition.Id == CardId.Follower).Take(1).ToArray();
             int before = player.FollowerCount, total = player.TotalCardCount;
             var view = demo.HandViews.Single();
             var click = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Left, clickCount = 2 };
             ExecuteEvents.Execute(view.gameObject, click, ExecuteEvents.pointerClickHandler);
             Assert.That(demo.IsAnimating, Is.True); demo.PlaySelected();
-            Assert.That(player.Offering, Is.EqualTo(26)); Assert.That(player.ChurchProperty, Is.EqualTo(6));
+            Assert.That(player.Offering, Is.EqualTo(110)); Assert.That(player.ChurchProperty, Is.EqualTo(10));
             Assert.That(player.Faith, Is.EqualTo(40)); Assert.That(player.Doctrine, Is.EqualTo(40));
-            Assert.That(player.FollowerCount, Is.EqualTo(before - 2)); Assert.That(player.TotalCardCount, Is.EqualTo(total));
+            Assert.That(player.FollowerCount, Is.EqualTo(before - 1)); Assert.That(player.TotalCardCount, Is.EqualTo(total));
             Assert.That(followers.All(c => c.Definition.Id == CardId.Heretic && game.FindCard(c.InstanceId).Card == c), Is.True);
             Assert.That(game.FindCard(source.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
             yield return new WaitForSecondsRealtime(0.4f);
@@ -143,7 +145,7 @@ namespace Pilgrimage.Tests
         [UnityTest] public IEnumerator UnusableAndInsufficientCardsDoNotAnimateOrConsumeState()
         {
             CardInstance faithful = GameDebugTools.GiveCard(demo.Game, 0, CardId.FaithfulFollower);
-            CardInstance worship = GameDebugTools.GiveCard(demo.Game, 0, CardId.RegularWorship);
+            CardInstance worship = GameDebugTools.GiveCard(demo.Game, 0, CardId.Evangelism);
             GameDebugTools.SetResources(demo.Game, 0, 0, 50, 50);
             demo.SendMessage("Refresh");
             yield return null;
@@ -202,7 +204,7 @@ namespace Pilgrimage.Tests
             demo.SendMessage("ApplyLabResources");
             Assert.That(demo.Game.Players[1].Offering, Is.EqualTo(7));
             Assert.That(demo.Game.Players[1].Faith, Is.EqualTo(30));
-            Assert.That(demo.Game.EffectiveCost(CardCatalog.Get(CardId.AggressiveMission), 1), Is.EqualTo(1));
+            Assert.That(demo.Game.EffectiveCost(CardCatalog.Get(CardId.AggressiveMission), 1), Is.EqualTo(3));
             demo.SetLabHand(Enumerable.Repeat(CardId.Follower, 5));
             Assert.That(demo.Game.Players[0].Hand.All(c => !c.Definition.IsPlayable), Is.True);
             demo.ExitCardLab();
@@ -216,12 +218,12 @@ namespace Pilgrimage.Tests
             var edict = demo.Game.Players[0].Hand.Single(c => c.Definition.Id == CardId.Edict);
             demo.Select(edict.InstanceId); demo.PlaySelected();
             Assert.That(demo.IsCardPickerOpen, Is.True);
-            demo.CloseCardPicker(); Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(20));
+            demo.CloseCardPicker(); Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(100));
             demo.PlaySelected();
             var target = demo.Game.Players[0].Deck[0];
             demo.ChooseRemovalTarget(target.InstanceId); demo.ChooseRemovalTarget(target.InstanceId);
             Assert.That(demo.IsAnimating, Is.True);
-            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(18));
+            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(80));
             Assert.That(demo.Game.FindCard(target.InstanceId).Pile, Is.EqualTo(CardPile.Removed));
             yield return new WaitForSecondsRealtime(0.4f);
             Assert.That(demo.HandViews.Count, Is.EqualTo(4));
@@ -245,10 +247,10 @@ namespace Pilgrimage.Tests
                 Assert.That(demo.Game.FindCard(card.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
             }
             Assert.That(demo.Game.Players[0].Hand.Count, Is.Zero);
-            Assert.That(demo.Game.Atheists, Is.EqualTo(98));
-            Assert.That(demo.Game.Players[0].Faith, Is.EqualTo(58));
-            Assert.That(demo.Game.Players[0].Doctrine, Is.EqualTo(70));
-            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(11)); // target faith 50 => mission cost 2
+            Assert.That(demo.Game.Atheists, Is.EqualTo(99));
+            Assert.That(demo.Game.Players[0].Faith, Is.EqualTo(63));
+            Assert.That(demo.Game.Players[0].Doctrine, Is.EqualTo(75));
+            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(60)); // target faith 50 => mission cost 2
             demo.ExitCardLab();
         }
 
@@ -258,7 +260,7 @@ namespace Pilgrimage.Tests
             demo.AiConfiguration.actionSafetyLimit = 3; demo.AiConfiguration.randomSeed = 7;
             GameDebugTools.GiveCard(demo.Game, 1, CardId.Evangelism);
             GameDebugTools.GiveCard(demo.Game, 1, CardId.Evangelism);
-            GameDebugTools.SetResources(demo.Game, 1, 10, 80, 80);
+            GameDebugTools.SetResources(demo.Game, 1, 20, 80, 80);
             demo.Game.EndActionTurn(0);
             float deadline = Time.realtimeSinceStartup + 30;
             bool sawReveal = false, checkedLock = false;
@@ -317,7 +319,7 @@ namespace Pilgrimage.Tests
             demo.AiConfiguration.revealInterval = 0.1f; demo.AiConfiguration.travelDuration = 0.2f;
             GameDebugTools.ReplaceHand(demo.Game, 1, Enumerable.Repeat(CardId.Follower, 5));
             var source = GameDebugTools.GiveCard(demo.Game, 1, CardId.Evangelism);
-            GameDebugTools.SetResources(demo.Game, 1, 5, 50, 50);
+            GameDebugTools.SetResources(demo.Game, 1, 10, 50, 50);
             demo.Game.EndActionTurn(0); demo.DebugOpponentStep();
             Assert.That(demo.IsAiRunning, Is.True);
             Assert.That(demo.RevealedCardInstanceId, Is.EqualTo(source.InstanceId));
@@ -337,7 +339,7 @@ namespace Pilgrimage.Tests
             demo.AiConfiguration.revealInterval = 0.1f; demo.AiConfiguration.travelDuration = 0.2f;
             GameDebugTools.ReplaceHand(demo.Game, 1, Enumerable.Repeat(CardId.Follower, 5));
             var source = GameDebugTools.GiveCard(demo.Game, 1, CardId.Evangelism);
-            GameDebugTools.SetResources(demo.Game, 1, 5, 50, 50);
+            GameDebugTools.SetResources(demo.Game, 1, 10, 50, 50);
             int followers = demo.Game.Players[1].FollowerCount;
             demo.Game.EndActionTurn(0); demo.DebugOpponentStep();
             Assert.That(demo.IsAiRunning, Is.True);
@@ -348,7 +350,7 @@ namespace Pilgrimage.Tests
             float deadline = Time.realtimeSinceStartup + 30;
             while (demo.IsAiRunning && Time.realtimeSinceStartup < deadline) yield return null;
             Assert.That(demo.IsAiRunning, Is.False); Assert.That(demo.Game.ActivePlayerIndex, Is.EqualTo(2));
-            Assert.That(demo.Game.Players[1].Offering, Is.EqualTo(4));
+            Assert.That(demo.Game.Players[1].Offering, Is.EqualTo(2));
             Assert.That(demo.Game.Players[1].FollowerCount, Is.EqualTo(followers + 2));
             Assert.That(demo.Game.Players[1].Discard.Count(c => c.InstanceId == source.InstanceId), Is.EqualTo(1));
             Assert.That(demo.Game.Atheists, Is.EqualTo(98));
@@ -361,7 +363,7 @@ namespace Pilgrimage.Tests
             GameDebugTools.ReplaceHand(demo.Game, 1, Enumerable.Repeat(CardId.Follower, 5));
             var mission = GameDebugTools.GiveCard(demo.Game, 1, CardId.AggressiveMission);
             // Make only player 3 a valid target, independent of initial shuffle.
-            GameDebugTools.SetResources(demo.Game, 0, 100, 50, 50);
+            GameDebugTools.SetResources(demo.Game, 0, 1000, 50, 50);
             foreach (int owner in new[] { 0, 2, 3 })
                 foreach (var card in demo.Game.Players[owner].Deck.Where(c => c.Definition.Id == CardId.Follower).ToArray())
                 {
@@ -389,21 +391,25 @@ namespace Pilgrimage.Tests
             float deadline = Time.realtimeSinceStartup + 30;
             while ((demo.Game.Round < 2 || demo.Game.ActivePlayerIndex != 0 || demo.IsAiRunning) && Time.realtimeSinceStartup < deadline) yield return null;
             Assert.That(demo.Game.Round, Is.EqualTo(2)); Assert.That(demo.Game.ActivePlayerIndex, Is.Zero);
-            Assert.That(demo.IsAiRunning, Is.False); Assert.That(demo.Game.Players[0].Hand.Count, Is.EqualTo(5));
+            Assert.That(demo.IsAiRunning, Is.False); Assert.That(demo.Game.Players[0].Hand.Count, Is.EqualTo(4));
         }
 
-        [UnityTest] public IEnumerator AiRewardsAreAutomaticAndHumanKeepsOwnChoice()
+        [UnityTest] public IEnumerator RandomRewardsAreAwardedBeforeResultAcknowledgement()
         {
-            demo.AiConfiguration.revealInterval = 0.1f;
+            demo.AiConfiguration.autoPlay = false;
             for (int round = 1; round <= 4; round++)
+            {
                 for (int turn = 0; turn < 4; turn++) demo.Game.EndActionTurn(demo.Game.ActivePlayerIndex);
-            float deadline = Time.realtimeSinceStartup + 30;
-            while ((demo.Game.RewardPlayerIndex != 0 || demo.IsAiRunning) && Time.realtimeSinceStartup < deadline) yield return null;
-            Assert.That(demo.Game.Phase, Is.EqualTo(GamePhase.RewardChoice)); Assert.That(demo.Game.RewardPlayerIndex, Is.Zero);
-            Assert.That(demo.Game.RewardOptions().Count, Is.EqualTo(20));
-            demo.Game.ChooseReward(0, CardId.Evangelism);
-            while ((demo.Game.Phase == GamePhase.RewardChoice || demo.IsAiRunning) && Time.realtimeSinceStartup < deadline) yield return null;
+                if (round != 4 && demo.Game.Phase == GamePhase.RewardChoice) demo.Game.AcknowledgeRewards();
+            }
+            demo.SendMessage("Refresh"); yield return null;
+            Assert.That(demo.Game.RoundRewards.Count, Is.EqualTo(4));
+            Assert.That(demo.GetComponentsInChildren<TMP_Text>().Count(t => t.name.StartsWith("Award ")), Is.EqualTo(4));
+            var ids = demo.Game.RoundRewards.Select(r => r.InstanceId).ToArray();
+            foreach (var receipt in demo.Game.RoundRewards) Assert.That(demo.Game.FindCard(receipt.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
+            demo.GetComponentsInChildren<Button>().Single(b => b.name == "획득 확인 · 계속").onClick.Invoke();
             Assert.That(demo.Game.Round, Is.EqualTo(5));
+            Assert.That(demo.Game.RewardHistory.Select(r => r.InstanceId), Is.EqualTo(ids));
             Assert.That(demo.Game.Players.All(p => p.TotalCardCount == 16), Is.True);
         }
 
@@ -416,10 +422,12 @@ namespace Pilgrimage.Tests
             yield return null; // Scene integration completes on the next player-loop update.
             demo = loadedDemoScene.GetRootGameObjects().SelectMany(o => o.GetComponentsInChildren<DemoController>()).Single();
             yield return null;
-            Assert.That(demo.IsFactionSelectionOpen, Is.True); Assert.That(demo.Game, Is.Null);
+            Assert.That(demo.IsModeSelectionOpen, Is.True); Assert.That(demo.Game, Is.Null);
+            demo.SelectSinglePlayer();
+            Assert.That(demo.IsFactionSelectionOpen, Is.True);
             Assert.That(demo.ChooseFaction(FactionId.Poverty), Is.True);
             Assert.That(demo.Game.Players.Count, Is.EqualTo(4));
-            Assert.That(demo.HandViews.Count, Is.EqualTo(5));
+            Assert.That(demo.HandViews.Count, Is.EqualTo(4));
             for (int i = 0; i < 5; i++) yield return null;
             CaptureRequested("-pilgrimageScreenshot");
         }

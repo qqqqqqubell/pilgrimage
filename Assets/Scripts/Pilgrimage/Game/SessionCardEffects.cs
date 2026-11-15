@@ -30,6 +30,11 @@ namespace Pilgrimage
                 case CardId.InterfaithLoan:
                     if (game.Players[actor].Offering < 10) { reason = "헌금이 10 이상이어야 합니다."; return false; }
                     break;
+                case CardId.HeresyJudgment:
+                    if (game.EffectPolicy.judgmentRequiresFullFollowers && game.Players[target.PlayerIndex].Doctrine < 30 &&
+                        EligibleFollowers(game.Players[target.PlayerIndex].Deck).Count() < 1 + game.JudgmentCount(actor, card))
+                    { reason = "대상 덱의 신도가 부족합니다."; return false; }
+                    break;
                 case CardId.CallOfFur:
                     if (!FurCallTargets(game, target.PlayerIndex).Any()) { reason = "변환할 대상 신도가 없습니다."; return false; }
                     break;

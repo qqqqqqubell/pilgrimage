@@ -10,7 +10,7 @@ namespace Pilgrimage.UI
     public sealed partial class DemoController
     {
         public bool IsCardLab { get; private set; }
-        public bool DevelopmentToolsAvailable => Application.isEditor || Debug.isDebugBuild;
+        public bool DevelopmentToolsAvailable => !IsLanMode && (Application.isEditor || Debug.isDebugBuild);
         public bool IsLabPanelOpen => labPanel != null && labPanel.gameObject.activeSelf;
         public bool IsCardPickerOpen => cardPicker != null && cardPicker.gameObject.activeSelf;
         private GameSession savedRegularGame;
@@ -28,7 +28,7 @@ namespace Pilgrimage.UI
         {
             if (DevelopmentToolsAvailable)
             {
-                Button(root, "카드 실험", new Vector2(440, 501), new Vector2(170, 40), () => { if (!CanInteract) return; EnterCardLab(); OpenLabPanel(); });
+                labEntryButton = Button(root, "카드 실험", new Vector2(440, 501), new Vector2(170, 40), () => { if (!CanInteract) return; EnterCardLab(); OpenLabPanel(); });
                 labBadge = Text(root, "Development Mode Badge", "카드 실험 모드 · 정규 게임 일시 보관", new Vector2(-680, 448), new Vector2(480, 35), 19);
                 labBadge.gameObject.SetActive(false);
                 labPanel = Panel(root, "Development Card Laboratory", Vector2.zero, Vector2.zero, new Color(0.02f, 0.04f, 0.07f, 0.98f)); Stretch(labPanel);
@@ -168,7 +168,7 @@ namespace Pilgrimage.UI
             if (Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0) Game.EndActionTurn(0);
             for (int i = 0; i < 16 && Game.Phase != GamePhase.Finished; i++)
             {
-                if (Game.Phase == GamePhase.RewardChoice) Game.ChooseReward(Game.RewardPlayerIndex, Game.RewardOptions()[0].Id);
+                if (Game.Phase == GamePhase.RewardChoice) Game.AcknowledgeRewards();
                 else if (Game.ActivePlayerIndex == 0) break;
                 else Game.EndActionTurn(Game.ActivePlayerIndex);
             }
@@ -204,12 +204,14 @@ namespace Pilgrimage.UI
         {
             if (!IsCardPickerOpen || !pendingRemovalSource.HasValue || IsAnimating || IsAiRunning) return;
             if (pendingCardTargets.Remove(target)) return;
-            int limit = Game.FindCard(pendingRemovalSource.Value).Card.Definition.Id == CardId.Edict ? 2 : 1;
+            CardId sourceId = IsLanMode ? LanView.hand.First(c => c.guid == pendingRemovalSource.Value.ToString("D")).id : Game.FindCard(pendingRemovalSource.Value).Card.Definition.Id;
+            int limit = sourceId == CardId.Edict ? 2 : 1;
             if (pendingCardTargets.Count < limit) pendingCardTargets.Add(target);
         }
         public void ConfirmCardTargets()
         {
             if (!IsCardPickerOpen || !pendingRemovalSource.HasValue || IsAnimating || IsAiRunning) return;
+            if (IsLanMode) { ConfirmLanTargets(); return; }
             Guid source = pendingRemovalSource.Value;
             var selection = new EffectTarget { PlayerIndex = 0, CardInstanceIds = pendingCardTargets.ToArray() };
             if (!Game.CanPlay(0, source, out string reason, selection)) { Feedback(reason); return; }

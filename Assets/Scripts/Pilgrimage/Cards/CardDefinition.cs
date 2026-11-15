@@ -88,6 +88,7 @@ namespace Pilgrimage
         public int SuccessfulUses { get; internal set; }
 
         public CardInstance(CardId id) { Definition = CardCatalog.Get(id); }
+        internal CardInstance(Guid identity, CardId id) { InstanceId = identity; Definition = CardCatalog.Get(id); }
         public CardInstance(CardDefinition definition)
         { Definition = definition ?? throw new ArgumentNullException(nameof(definition)); }
         // Conversion preserves the identity of the physical card.
