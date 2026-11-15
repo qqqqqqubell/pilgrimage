@@ -14,7 +14,7 @@ namespace Pilgrimage.UI
         [SerializeField] private Image frontImage, backImage;
         [SerializeField] private TMP_Text nameLabel, descriptionLabel, flavorLabel, costLabel, missingArtworkLabel;
         [Header("Hover / keyboard selection")]
-        [SerializeField, Range(1.1f,3f)] private float hoverScale=3f;
+        [SerializeField, Range(1.1f,3f)] private float hoverScale=1.5f;
         [SerializeField] private float hoverLift=240f;
         [SerializeField, Range(.05f,.6f)] private float flipDuration=.22f;
         public CardInstance Card {get;private set;}
@@ -27,7 +27,8 @@ namespace Pilgrimage.UI
         private Vector2 restPosition,visualOrigin;
         private Quaternion visualRotation;
         private Vector3 visualScale;
-        private float restAngle,hoverProgress;
+        private float restAngle,hoverProgress,flipProgress;
+        private bool showReverse;
         private int handIndex;
         private bool readOnly;
 
@@ -48,10 +49,10 @@ namespace Pilgrimage.UI
         }
         private void BindDefinition(DemoController controller,CardDefinition definition)
         {
-            if(hoverProgress>0){hoverProgress=0;Highlighted=false;RenderHover();}
+            if(hoverProgress>0||flipProgress>0){hoverProgress=flipProgress=0;showReverse=false;Highlighted=false;RenderHover();}
             owner=controller;Definition=definition;Rect=(RectTransform)transform;
             visualOrigin=visual.anchoredPosition;visualRotation=visual.localRotation;visualScale=visual.localScale;
-            hoverProgress=0;Highlighted=false;
+            hoverProgress=flipProgress=0;showReverse=false;Highlighted=false;
             var entry=catalog!=null?catalog.Get(definition.Id):null;
             frontImage.sprite=entry?.front;backImage.sprite=entry?.back;
             missingArtworkLabel.text=definition.Name;
@@ -66,6 +67,7 @@ namespace Pilgrimage.UI
         public void SetHighlight(bool selected)
         {
             Highlighted=selected;
+            if(!selected)showReverse=false;
             if(Rect==null)return;
             if(!readOnly){Rect.anchoredPosition=restPosition;Rect.localRotation=Quaternion.Euler(0,0,restAngle);}
             if(selected)Rect.SetAsLastSibling();
@@ -74,20 +76,23 @@ namespace Pilgrimage.UI
         {
             if(Rect==null)return;
             float target=Highlighted?1:0;
-            if(Mathf.Approximately(hoverProgress,target))return;
-            hoverProgress=Mathf.MoveTowards(hoverProgress,target,Time.unscaledDeltaTime/Mathf.Max(.05f,flipDuration));
+            float reverseTarget=showReverse?1:0;
+            if(Mathf.Approximately(hoverProgress,target)&&Mathf.Approximately(flipProgress,reverseTarget))return;
+            float step=Time.unscaledDeltaTime/Mathf.Max(.05f,flipDuration);
+            hoverProgress=Mathf.MoveTowards(hoverProgress,target,step);
+            flipProgress=Mathf.MoveTowards(flipProgress,reverseTarget,step);
             RenderHover();
         }
         private void RenderHover()
         {
-            bool reverse=hoverProgress>=.5f;
+            bool reverse=flipProgress>=.5f;
             var face=reverse?CardDisplayFace.Detail:CardDisplayFace.Front;
             if(Face!=face)PilgrimageAudio.Instance?.Play("card_flip",.7f);
             Face=face;
             frontFace.SetActive(!reverse);backFace.SetActive(reverse);
             float amount=Mathf.SmoothStep(0,1,hoverProgress);
             visual.anchoredPosition=visualOrigin+Vector2.up*((readOnly?0:hoverLift)*amount);
-            visual.localRotation=visualRotation*Quaternion.Euler(0,Mathf.Sin(hoverProgress*Mathf.PI)*90,-restAngle*amount);
+            visual.localRotation=visualRotation*Quaternion.Euler(0,Mathf.Sin(flipProgress*Mathf.PI)*90,-restAngle*amount);
             visual.localScale=visualScale*Mathf.Lerp(1,hoverScale,amount);
         }
         public void RestoreSiblingOrder(){if(Rect!=null&&!readOnly)Rect.SetSiblingIndex(handIndex);}
@@ -98,16 +103,23 @@ namespace Pilgrimage.UI
         }
         public void OnPointerExit(PointerEventData eventData)
         {
+            showReverse=false;
             if(readOnly){SetHighlight(false);return;}
             owner.ReleaseMouseSelection(Card.InstanceId);
         }
         public void OnPointerClick(PointerEventData eventData)
         {
-            if(readOnly||!owner.CanInteract)return;
+            if(readOnly)
+            {
+                if(eventData.button==PointerEventData.InputButton.Right)ToggleFace();
+                return;
+            }
+            if(!owner.CanInteract)return;
             owner.SelectFromMouse(Card.InstanceId);
-            if(eventData.button==PointerEventData.InputButton.Right)owner.ToggleDetail();
+            if(eventData.button==PointerEventData.InputButton.Right)ToggleFace();
             else if(eventData.button==PointerEventData.InputButton.Left&&eventData.clickCount==2)owner.PlaySelected();
         }
+        public void ToggleFace(){showReverse=!showReverse;}
         public static Color CategoryColor(CardCategory category)
         {
             switch(category){case CardCategory.Follower:return new Color(.18f,.37f,.31f);case CardCategory.Heretic:return new Color(.43f,.16f,.24f);case CardCategory.Faction:return new Color(.41f,.32f,.15f);default:return new Color(.2f,.3f,.46f);}

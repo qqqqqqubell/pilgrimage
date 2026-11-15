@@ -62,7 +62,7 @@ namespace Pilgrimage.UI
             try {
                 while(queue.Count>0){var e=queue.Dequeue();processingCard=e.cause==VisualCause.Card;
                     if(processingCard){while(pendingReveals.Contains(Key(e.source,e.presentation))||CutIn.IsPlaying)yield return null;}
-                    Impact.Show(e,TimeScale);Popups.Show(e,TimeScale);
+                    Impact.Show(e,TimeScale);
                     PilgrimageAudio.Instance?.Present(e,coinsSound!=null,impactSound!=null);
                     if(e.changes.Any(d=>d.kind==StatusKind.Offering&&d.amount>0))PlaySound("coins",coinsSound);
                     if(e.cause==VisualCause.Card)PlaySound("card.impact",impactSound);

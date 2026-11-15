@@ -27,18 +27,7 @@ namespace Pilgrimage.UI
                 case StatusKind.Draw:return "카드 "+d.amount+"장 드로우";case StatusKind.Acquisition:return "카드 "+d.amount+"장 획득";
                 case StatusKind.EffectStarted:return "지속 효과 적용";case StatusKind.EffectEnded:return "지속 효과 종료";case StatusKind.Defense:return "방어 성공!";default:return "";}
         }
-        public void Show(GameVisualEvent e,float scale=1)
-        {
-            string prefix=e.cause==VisualCause.Card?"":e.cause==VisualCause.NaturalDecay?"자연 감소 · ":e.cause==VisualCause.RoundIncome?"수입 · ":e.cause==VisualCause.RoundDraw?"라운드 · ":e.cause==VisualCause.Reward?"보상 · ":e.cause==VisualCause.Delayed?"지연 효과 · ":e.cause==VisualCause.Threshold?"임계값 · ":e.cause==VisualCause.Duration?"기간 · ":"턴 종료 · ";
-            foreach(var delta in e.changes){var s=pool.Find(p=>!p.active);if(s==null){s=pool[0];s.active=false;}
-                int row=0;while(pool.Exists(p=>p.active&&p.seat==delta.player&&p.row==row))row++;
-                s.seat=delta.player;s.row=row;s.origin=anchor(delta.player)+new Vector2((row/6)*210-100,(row%6)*32);
-                s.start=Time.unscaledTime;s.duration=Mathf.Max(.04f,.8f*scale);s.active=true;s.text.gameObject.SetActive(true);
-                s.text.text=prefix+Label(delta);bool bad=delta.amount<0||delta.kind==StatusKind.HereticConversion||delta.kind==StatusKind.RefusingConversion;
-                s.text.color=Color.black;
-                ShownCount++;RecentTexts.Add(s.text.text);if(RecentTexts.Count>64)RecentTexts.RemoveAt(0);
-            }
-        }
+        public void Show(GameVisualEvent e,float scale=1) { Clear(); }
         private void Update()
         {
             foreach(var s in pool){if(!s.active)continue;float t=(Time.unscaledTime-s.start)/s.duration;if(t>=1){s.active=false;s.text.gameObject.SetActive(false);continue;}

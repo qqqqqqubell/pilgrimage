@@ -35,10 +35,11 @@ namespace Pilgrimage.Editor
         {
             if (!Application.isBatchMode && !EditorUtility.DisplayDialog("씬 UI 다시 생성", "기본 두 씬과 카드 프리팹의 UI 편집 내용을 초기화합니다. 계속할까요?", "다시 생성", "취소")) return;
             Directory.CreateDirectory(Folder);
-            var front = Panel(null, "Card", Vector2.zero, new Vector2(200,280));
+            var front = Panel(null, "Card", Vector2.zero, new Vector2(260,364));
             front.GetComponent<Image>().color = Color.clear; front.GetComponent<Image>().raycastTarget = true;
             front.gameObject.AddComponent<CardView>();
             var border = Panel(front,"Card Border",Vector2.zero,new Vector2(200,280));
+            border.localScale=Vector3.one*1.3f;
             var outline=border.gameObject.AddComponent<Outline>();outline.effectColor=Color.gray;outline.effectDistance=new Vector2(1,-1);
             var frame = Panel(border,"Card Frame",Vector2.zero,new Vector2(188,268));
             Label(frame,"Card Number","#01",new Vector2(0,111),new Vector2(163,25),18);

@@ -212,7 +212,7 @@ namespace Pilgrimage.UI
             }
             if(SelectedCardId.HasValue&&!handViews.Any(v=>v.Card.InstanceId==SelectedCardId))SelectedCardId=null;
             ApplySelection(); BuildLanRewards(); UpdateKickStalled();
-            if(LanView.reveal!=null&&!string.IsNullOrEmpty(LanView.reveal.result)) Feedback(LanView.reveal.result);
+            if(LanView.reveal!=null&&LanView.reveal.completed) { if(LanView.reveal.succeeded)messageText.text=""; else if(!string.IsNullOrEmpty(LanView.reveal.result))Feedback(LanView.reveal.result); }
             if(LanView.phase==GamePhase.Finished)Feedback("최다 신도 "+LanView.players.Max(p=>p.followers)+"명 · 전체 인원 "+LanView.population+"명");
         }
         private bool LanCanAct => LanView!=null&&LanView.phase==GamePhase.Actions&&LanView.activePlayer==LocalSeat&&!LanView.busy&&!IsAnimating&&!(Visuals!=null&&Visuals.IsBusy)&&Network!=null&&!Network.Pending;
@@ -318,11 +318,7 @@ namespace Pilgrimage.UI
         {
             try {
                 Reveal(CardCatalog.Get(reveal.id),LanView.players[reveal.actor].ai,Guid.Parse(reveal.guid));
-                int relative=(reveal.actor-LocalSeat+4)%4;
-                Vector2 start=relative==0?new Vector2(0,-350):relative==1?new Vector2(0,211):relative==2?new Vector2(-755,-19):new Vector2(755,-19);
-                float travel=Mathf.Max(.001f,reveal.travelSeconds);
-                for(float t=0;t<travel;t+=Time.unscaledDeltaTime){revealedCard.anchoredPosition=Vector2.Lerp(start,new Vector2(0,6),t/travel);revealedCard.localScale=Vector3.one*Mathf.Lerp(.45f,1,t/travel);yield return null;}
-                revealedCard.anchoredPosition=new Vector2(0,6);revealedCard.localScale=Vector3.one;
+                yield return ThrowSubmittedCard(reveal.actor,reveal.travelSeconds);
                 if(reveal.cutInSeconds>0&&(!reveal.completed||reveal.succeeded))Visuals.BeginCutIn(CardCatalog.Get(reveal.id),reveal.cutInSeconds/.8f);
             } finally {if(isActiveAndEnabled&&LanView!=null)endButton.interactable=LanCanAct;}
         }

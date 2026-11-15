@@ -60,6 +60,8 @@ namespace Pilgrimage.UI
             if (root == null) { Debug.LogError("Pilgrimage: authored scene UI is missing. Open PilgrimageDemo or SampleScene.", this); enabled = false; return; }
             BindSceneUI();
             BuildGameplayVisuals();
+            var cover = root.GetComponentInChildren<CoverScreen>(true);
+            if (cover != null) cover.Initialize(modeScreen.gameObject);
         }
 
         private void InitializeAiPlayers()
@@ -438,14 +440,7 @@ namespace Pilgrimage.UI
                     targetLabel.text = decision.Definition.Target == TargetKind.Self ? "" : Game.Players[decision.Target.PlayerIndex].Name;
                     float travel = Mathf.Clamp(aiSettings.travelDuration, 0.05f, 2);
                     float interval = Mathf.Clamp(aiSettings.revealInterval, 0.1f, 10);
-                    Vector2 start = actor == 1 ? new Vector2(0, 211) : actor == 2 ? new Vector2(-755, -19) : new Vector2(755, -19);
-                    for (float t = 0; t < travel; t += Time.unscaledDeltaTime)
-                    {
-                        revealedCard.anchoredPosition = Vector2.Lerp(start, new Vector2(0, 6), t / travel);
-                        revealedCard.localScale = Vector3.one * Mathf.Lerp(0.45f, 1, t / travel);
-                        yield return null;
-                    }
-                    revealedCard.anchoredPosition = new Vector2(0, 6); revealedCard.localScale = Vector3.one;
+                    yield return ThrowSubmittedCard(actor,travel);
                     if (VisualAssetLibrary.HasCutIn(decision.Definition)) {
                         Visuals.BeginCutIn(decision.Definition, VisualScale);
                         yield return new WaitForSecondsRealtime(CutInPresenter.EffectMoment * VisualScale);
@@ -478,13 +473,7 @@ namespace Pilgrimage.UI
         }
         private void ShowResult(int actor, int offering, int followers, int faith, int doctrine)
         {
-            PlayerState player = Game.Players[actor];
-            var changes = new List<string>();
-            if (offering != player.Offering) changes.Add($"헌금 {player.Offering - offering:+#;-#;0}");
-            if (followers != player.FollowerCount) changes.Add($"신도 {player.FollowerCount - followers:+#;-#;0}");
-            if (faith != player.Faith) changes.Add($"신앙 {player.Faith - faith:+#;-#;0}");
-            if (doctrine != player.Doctrine) changes.Add($"교리 {player.Doctrine - doctrine:+#;-#;0}");
-            Feedback(changes.Count == 0 ? "효과 적용" : string.Join(" · ", changes));
+            messageText.text = "";
         }
 
         private void ResetGame()
