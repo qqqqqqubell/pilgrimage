@@ -42,11 +42,14 @@ namespace Pilgrimage.Editor
             provider.GetDataProvider<ISpriteNameFileIdDataProvider>().SetNameFileIdPairs(sprites.Select(r=>new SpriteNameFileIdPair(r.name,r.spriteID)));
             provider.Apply();
         }
-        [InitializeOnLoadMethod] private static void Schedule()=>EditorApplication.delayCall+=EnsureLibrary;
         [MenuItem("Pilgrimage/Visuals/에셋 설정 및 라이브러리 갱신")]
         public static void EnsureLibrary()
         {
-            if(EditorApplication.isCompiling||EditorApplication.isUpdating){EditorApplication.delayCall+=EnsureLibrary;return;}
+            if(EditorApplication.isCompiling||EditorApplication.isUpdating)
+            {
+                Debug.LogWarning("Pilgrimage: 에셋 가져오기/컴파일 완료 후 라이브러리 갱신을 다시 선택하세요.");
+                return;
+            }
             if(!Directory.Exists(Root))return;
             Directory.CreateDirectory(Root+"Resources");
             var data=AssetDatabase.LoadAssetAtPath<VisualAssetLibrary>(LibraryPath);
@@ -62,7 +65,8 @@ namespace Pilgrimage.Editor
             {
                 EditorJsonUtility.FromJsonOverwrite(previous,data);
                 if(create)UnityEngine.Object.DestroyImmediate(data);
-                EditorApplication.delayCall+=EnsureLibrary;return;
+                Debug.LogWarning("Pilgrimage: 일부 스프라이트를 읽지 못해 기존 라이브러리를 보존했습니다. 자동 재시도하지 않습니다.");
+                return;
             }
             if(create)AssetDatabase.CreateAsset(data,LibraryPath);
             if(create||previous!=EditorJsonUtility.ToJson(data)){EditorUtility.SetDirty(data);AssetDatabase.SaveAssets();}
