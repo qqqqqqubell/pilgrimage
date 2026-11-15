@@ -10,7 +10,7 @@ namespace Pilgrimage.Tests
         {
             var g=BalanceTestSupport.Game();var source=BalanceTestSupport.Play(g,CardId.Evangelism);var e=g.LastVisualEvent;
             Assert.That(e.cause,Is.EqualTo(VisualCause.Card));Assert.That(e.source,Is.EqualTo(source.InstanceId.ToString("D")));
-            Assert.That(Change(e,0,StatusKind.Offering),Is.EqualTo(-8));Assert.That(Change(e,0,StatusKind.Faith),Is.EqualTo(-2));Assert.That(Change(e,0,StatusKind.Followers),Is.EqualTo(2));
+            Assert.That(Change(e,0,StatusKind.Offering),Is.EqualTo(-5));Assert.That(Change(e,0,StatusKind.Faith),Is.EqualTo(-2));Assert.That(Change(e,0,StatusKind.Followers),Is.EqualTo(2));
             Assert.That(Change(e,-1,StatusKind.Atheists),Is.EqualTo(-2));Assert.That(Change(e,0,StatusKind.Acquisition),Is.EqualTo(2));
             int serial=e.serial;Assert.That(g.TryPlay(0,source.InstanceId,out _),Is.False);Assert.That(g.LastVisualEvent.serial,Is.EqualTo(serial));
             var follower=g.Players[0].Hand.First(c=>c.Definition.Id==CardId.Follower);Assert.That(g.TryPlay(0,follower.InstanceId,out _),Is.False);Assert.That(g.LastVisualEvent.serial,Is.EqualTo(serial));
@@ -18,7 +18,7 @@ namespace Pilgrimage.Tests
         [Test] public void IndulgenceReportsActualConversionNotNewPeopleAndBlessingReportsActualDraw()
         {
             var g=BalanceTestSupport.Game();BalanceTestSupport.Play(g,CardId.Indulgence);var e=g.LastVisualEvent;
-            Assert.That(Change(e,0,StatusKind.HereticConversion),Is.EqualTo(1));Assert.That(Change(e,0,StatusKind.Followers),Is.EqualTo(-1));Assert.That(Change(e,0,StatusKind.Property),Is.EqualTo(10));Assert.That(Change(e,0,StatusKind.Offering),Is.EqualTo(10));
+            Assert.That(Change(e,0,StatusKind.HereticConversion),Is.EqualTo(1));Assert.That(Change(e,0,StatusKind.Followers),Is.EqualTo(-1));Assert.That(Change(e,0,StatusKind.Property),Is.EqualTo(30));Assert.That(Change(e,0,StatusKind.Offering),Is.EqualTo(40));
             Assert.That(Change(e,-1,StatusKind.Atheists),Is.Zero);
             BalanceTestSupport.Give(g,CardId.Follower,pile:CardPile.Deck);BalanceTestSupport.Give(g,CardId.Follower,pile:CardPile.Deck);
             BalanceTestSupport.Play(g,CardId.Blessing);Assert.That(Change(g.LastVisualEvent,0,StatusKind.Draw),Is.EqualTo(2));

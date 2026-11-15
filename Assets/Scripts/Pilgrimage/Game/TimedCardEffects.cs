@@ -20,7 +20,8 @@ namespace Pilgrimage
         public JudgmentCountScope judgmentCountScope = JudgmentCountScope.Congregation;
         public bool judgmentIncludesCurrentUse = false;
         public LoanShortfallPolicy loanShortfall = LoanShortfallPolicy.CollectAvailable;
-        public bool furCallConvertsAllHandFollowers = true;
+        // Legacy serialized option retained; Call of Fur always converts at most two cards.
+        public bool furCallConvertsAllHandFollowers = false;
         public bool loansResolveInLeaderOrder = true;
         public bool judgmentRequiresFullFollowers = false;
         internal TimedEffectPolicy Copy() => (TimedEffectPolicy)MemberwiseClone();
@@ -38,7 +39,7 @@ namespace Pilgrimage
         public int IncomeAddition { get; }
         public double Multiplier { get; }
         public int TargetOwner { get; }
-        public int Outstanding { get; internal set; } = 30;
+        public int Outstanding { get; internal set; } = 40;
         public bool IsDelayed => Kind == TimedEffectKind.PenanceReward || Kind == TimedEffectKind.CaravanReward || Kind == TimedEffectKind.LoanRecovery;
         internal TimedCardEffect(CardInstance source, TimedEffectKind kind, int turns, int addition, double multiplier, int targetOwner)
         { Source = source.Definition.Id; SourceInstanceId = source.InstanceId; Kind = kind;

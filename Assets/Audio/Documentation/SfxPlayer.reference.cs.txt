@@ -1,0 +1,72 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+// 효과음 재생기. Resources/sfx/ 폴더에 ogg를 넣으면 이름으로 자동 묶음.
+//   card_draw_01.ogg, card_draw_02.ogg ... → "card_draw" 키로 랜덤 재생
+//   SfxPlayer.Play("card_draw");
+//   SfxPlayer.Play("hit_heavy", pitchJitter: 0.08f);
+// 컷인 타이밍 예시:
+//   0.1s Play("cutin_whoosh")  0.3s Play("cutin_impact")  0.6s Play("hit_heavy") + Play("hit_slash")
+public class SfxPlayer : MonoBehaviour
+{
+    public static SfxPlayer I { get; private set; }
+
+    [Range(0, 1)] public float masterVolume = 0.9f;
+    public AudioSource bgm;              // BGM 소스(선택). 컷인 동안 음량을 낮춤
+    [Range(0, 1)] public float duckTo = 0.35f;
+    public int voices = 12;
+
+    readonly Dictionary<string, List<AudioClip>> bank = new();
+    readonly Dictionary<string, float> lastPlayed = new();
+    AudioSource[] pool; int next;
+    float bgmBase = 1f, duckUntil;
+
+    void Awake()
+    {
+        I = this;
+        foreach (var c in Resources.LoadAll<AudioClip>("sfx"))
+        {
+            string key = c.name;
+            int u = key.LastIndexOf('_');
+            if (u > 0 && int.TryParse(key[(u + 1)..], out _)) key = key[..u]; // _01 제거
+            if (!bank.TryGetValue(key, out var list)) bank[key] = list = new List<AudioClip>();
+            list.Add(c);
+        }
+        pool = new AudioSource[voices];
+        for (int i = 0; i < voices; i++)
+        {
+            pool[i] = gameObject.AddComponent<AudioSource>();
+            pool[i].playOnAwake = false;
+        }
+        if (bgm) bgmBase = bgm.volume;
+    }
+
+    public static void Play(string key, float volume = 1f, float pitchJitter = 0.05f, float minInterval = 0.04f)
+    {
+        if (I) I.PlayInternal(key, volume, pitchJitter, minInterval);
+    }
+
+    void PlayInternal(string key, float volume, float pitchJitter, float minInterval)
+    {
+        if (!bank.TryGetValue(key, out var list) || list.Count == 0) { Debug.LogWarning($"SFX 없음: {key}"); return; }
+        // 같은 소리가 한 프레임에 여러 번 겹치는 것 방지 (드로우 5장 등)
+        if (lastPlayed.TryGetValue(key, out var t) && Time.unscaledTime - t < minInterval) return;
+        lastPlayed[key] = Time.unscaledTime;
+
+        var src = pool[next]; next = (next + 1) % pool.Length;
+        src.clip = list[Random.Range(0, list.Count)];
+        src.volume = volume * masterVolume;
+        src.pitch = 1f + Random.Range(-pitchJitter, pitchJitter);
+        src.Play();
+    }
+
+    // 컷인 시작 시 호출: dur초 동안 BGM을 낮춤
+    public static void Duck(float dur = 0.8f) { if (I) I.duckUntil = Time.unscaledTime + dur; }
+
+    void Update()
+    {
+        if (!bgm) return;
+        float target = Time.unscaledTime < duckUntil ? bgmBase * duckTo : bgmBase;
+        bgm.volume = Mathf.MoveTowards(bgm.volume, target, Time.unscaledDeltaTime * 3f);
+    }
+}

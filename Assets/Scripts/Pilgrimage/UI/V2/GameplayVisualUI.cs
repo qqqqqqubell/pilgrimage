@@ -10,31 +10,27 @@ namespace Pilgrimage.UI
     {
         public GameplayVisualCoordinator Visuals {get;private set;}
         public VisualAssetLibrary VisualAssets {get;private set;}
+        [SerializeField] private VisualAssetLibrary presentationAssets;
         private void BuildGameplayVisuals()
         {
-            VisualAssets=Resources.Load<VisualAssetLibrary>("PilgrimageVisualAssets");
-            if(VisualAssets==null){Debug.LogWarning("Pilgrimage: Visual library missing. Use Pilgrimage/Visuals/에셋 설정 및 라이브러리 갱신.");}
-            else if(VisualAssets.background!=null){
-                var container=root.Find("Background").GetComponent<RectTransform>();
-                var art=Panel(container,"Red Table Background",Vector2.zero,Vector2.zero,Color.white);art.GetComponent<Image>().sprite=VisualAssets.background;art.GetComponent<Image>().raycastTarget=false;
-                var fit=art.gameObject.AddComponent<AspectRatioFitter>();fit.aspectRatio=1920f/1080;fit.aspectMode=AspectRatioFitter.AspectMode.EnvelopeParent;
-                art.SetAsFirstSibling();
+            VisualAssets = presentationAssets != null ? presentationAssets : Resources.Load<VisualAssetLibrary>("PilgrimageVisualAssets");
+            GameObject visualObject;
+            if (buildingSceneUI)
+            {
+                visualObject = new GameObject("Gameplay Visual Presenters", typeof(RectTransform), typeof(GameplayVisualCoordinator), typeof(CutInPresenter), typeof(ImpactVfxPresenter), typeof(StatusPopupPresenter), typeof(AudioSource));
+                visualObject.transform.SetParent(root, false);
+                Stretch((RectTransform)visualObject.transform);
             }
-            foreach(var image in root.GetComponentsInChildren<Image>(true))if(image.name.StartsWith("Player ")&&image.name.EndsWith("Table"))image.color=new Color(.09f,.035f,.035f,.9f);
-            var table=root.Find("Shared Table").GetComponent<Image>();table.color=new Color(.035f,.015f,.02f,.25f);
-            var prefab=Resources.Load<GameObject>("PilgrimageGameplayVisuals");
-            var visualObject=prefab!=null?Instantiate(prefab,root,false):new GameObject("Gameplay Visual Presenters",typeof(RectTransform));
-            if(prefab==null)visualObject.transform.SetParent(root,false);
-            Visuals=visualObject.GetComponent<GameplayVisualCoordinator>()??visualObject.AddComponent<GameplayVisualCoordinator>();
-            Visuals.Initialize(this,(RectTransform)visualObject.transform,VisualAssets,VisualAnchor);
-            var r=(RectTransform)visualObject.transform;Stretch(r);
+            else visualObject = root.Find("Gameplay Visual Presenters").gameObject;
+            Visuals = visualObject.GetComponent<GameplayVisualCoordinator>();
+            Visuals.Initialize(this, (RectTransform)visualObject.transform, VisualAssets, VisualAnchor);
             Visuals.Completed+=()=>{if(isActiveAndEnabled&&(Game!=null||LanView!=null))Refresh();};
         }
         private Vector2 VisualAnchor(int player)
         {
             if(player<0)return new Vector2(20,130);
             int relative=IsLanMode?(player-LocalSeat+4)%4:player;
-            return relative==0?new Vector2(-130,-405):relative==1?new Vector2(-80,300):relative==2?new Vector2(-730,100):new Vector2(730,100);
+            return relative==0?new Vector2(820,-150):relative==1?new Vector2(820,410):relative==2?new Vector2(-820,410):new Vector2(-820,-150);
         }
         private float VisualScale=>Mathf.Clamp(aiSettings.presentationTimeScale,.02f,2);
         private IEnumerator PlayLocalCardWithVisuals(Guid id,EffectTarget target)

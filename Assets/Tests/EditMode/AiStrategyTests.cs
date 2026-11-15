@@ -113,11 +113,11 @@ namespace Pilgrimage.Tests
    var gift=Follower(g); Assert.That(g.TryPlay(0,card(CardId.BondOfFaith).InstanceId,out _,new EffectTarget{PlayerIndex=1}),Is.True);
    Assert.That(g.Players[1].Deck.Last(),Is.SameAs(gift)); Fund(g,1,100,30);
    Assert.That(g.TryPlay(0,card(CardId.AggressiveMission).InstanceId,out _,new EffectTarget{PlayerIndex=1}),Is.True);
-   Assert.That(p.Offering,Is.EqualTo(62)); Assert.That(p.Faith,Is.EqualTo(63)); Assert.That(p.Doctrine,Is.EqualTo(75)); Conserved(g);
+   Assert.That(p.Offering,Is.EqualTo(77)); Assert.That(p.Faith,Is.EqualTo(63)); Assert.That(p.Doctrine,Is.EqualTo(75)); Conserved(g);
   }
   [Test] public void AiReevaluatesResourceFundingAndUsesMultipleCards()
   {
-   var g=Game(); Fund(g,0,6); var request=Give(g,CardId.RequestOffering); var evangelism=Give(g,CardId.Evangelism);
+   var g=Game(); Fund(g,0,0); var request=Give(g,CardId.RequestOffering); var evangelism=Give(g,CardId.Evangelism);
    var config=Config(); var turn=new AiTurn(g,0,new RuleBasedAi(config),config);
    var a=turn.Next(g); Assert.That(a,Is.Not.Null); Assert.That(a.CardInstanceId,Is.EqualTo(request.InstanceId)); Assert.That(g.TryPlay(0,a.CardInstanceId,out _,a.Target),Is.True);
    var b=turn.Next(g); Assert.That(b,Is.Not.Null); Assert.That(b.CardInstanceId,Is.EqualTo(evangelism.InstanceId)); Assert.That(g.TryPlay(0,b.CardInstanceId,out _,b.Target),Is.True);
@@ -193,6 +193,25 @@ namespace Pilgrimage.Tests
    var regular=Game(false,FactionId.Gold); var ids=Cards(regular).Select(c=>c.InstanceId).ToArray(); var lab=GameDebugTools.CreateCardLab(FactionId.Gold);
    GameDebugTools.ReplaceHand(lab,0,Enumerable.Repeat(CardId.Follower,5)); Assert.That(lab.Players[0].Hand.All(c=>!lab.CanPlay(0,c.InstanceId,out _)),Is.True);
    Assert.That(Cards(regular).Select(c=>c.InstanceId),Is.EquivalentTo(ids)); Assert.That(regular.HumanFaction,Is.EqualTo(FactionId.Gold));
+  }
+  [Test] public void AiUsesNewMissionAndJudgmentCostsEvenAtLowOwnFaith()
+  {
+   var g=Game(); Fund(g,0,3,10); Fund(g,1,200,30); var mission=Give(g,CardId.AggressiveMission); var judgment=Give(g,CardId.HeresyJudgment);
+   var actions=new RuleBasedAi(Config()).EvaluateActions(new AiObservation(g,0));
+   Assert.That(actions.Any(a=>a.CardInstanceId==mission.InstanceId&&a.Target.PlayerIndex==1),Is.True);
+   Assert.That(actions.Any(a=>a.CardInstanceId==judgment.InstanceId),Is.True);
+   Assert.That(g.EffectiveCost(0,judgment,new EffectTarget{PlayerIndex=1}),Is.EqualTo(3));
+  }
+  [Test] public void AiValuesDeckHereticRecoveryAndMassAgitationFollowerAcquisition()
+  {
+   foreach(var id in new[]{CardId.Inquisitor,CardId.MassAgitation}) {
+    var g=Game(); var source=Give(g,id);
+    for(int n=0;n<3;n++) Give(g,CardId.Heretic,0,CardPile.Deck);
+    var config=Config(); config.factions=new FactionAiProfile[0]; config.thresholdCrossingValue=0; config.resourceUnlockWeight=0;
+    config.defaultWeights=new AiWeights{followers=1,faith=0,doctrine=0,offering=0,disruption=0,factionAbility=0,futureCards=0,cost=0};
+    var decision=new RuleBasedAi(config).EvaluateActions(new AiObservation(g,0)).Single(a=>a.CardInstanceId==source.InstanceId);
+    Assert.That(decision.Score,Is.EqualTo(3),id.ToString());
+   }
   }
  }
 }

@@ -4,9 +4,10 @@ namespace Pilgrimage.UI
 {
     public sealed partial class DemoController
     {
-        private RectTransform factionSelection;
+        [SerializeField] private RectTransform factionSelection;
         public bool IsFactionSelectionOpen => factionSelection != null && factionSelection.gameObject.activeSelf;
 
+#if UNITY_EDITOR
         private void BuildFactionSelection()
         {
             factionSelection = Panel(root, "Faction Selection", Vector2.zero, Vector2.zero, new Color(0.025f, 0.055f, 0.08f, 1));
@@ -24,6 +25,7 @@ namespace Pilgrimage.UI
             }
             Text(factionSelection, "Selection Note", "선택한 교단은 내가, 나머지 세 교단은 AI가 담당합니다.", new Vector2(0, -430), new Vector2(1600, 55), 23);
         }
+#endif
 
         public bool ChooseFaction(FactionId faction)
         {

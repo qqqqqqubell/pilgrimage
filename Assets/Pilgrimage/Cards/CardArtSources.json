@@ -1,0 +1,364 @@
+{
+  "cards": [
+    {
+      "id": "Follower",
+      "number": 0,
+      "front": "General_00_Front.png",
+      "back": "General_00_Back.png",
+      "sourceFront": "0.png",
+      "sourceBack": "45.png"
+    },
+    {
+      "id": "RequestOffering",
+      "number": 1,
+      "front": "General_01_Front.png",
+      "back": "General_01_Back.png",
+      "sourceFront": "1.png",
+      "sourceBack": "33.png"
+    },
+    {
+      "id": "ClergyTraining",
+      "number": 2,
+      "front": "General_02_Front.png",
+      "back": "General_02_Back.png",
+      "sourceFront": "2.png",
+      "sourceBack": "37.png"
+    },
+    {
+      "id": "Evangelism",
+      "number": 3,
+      "front": "General_03_Front.png",
+      "back": "General_03_Back.png",
+      "sourceFront": "3.png",
+      "sourceBack": "40.png"
+    },
+    {
+      "id": "Edict",
+      "number": 4,
+      "front": "General_04_Front.png",
+      "back": "General_04_Back.png",
+      "sourceFront": "4.png",
+      "sourceBack": "36.png"
+    },
+    {
+      "id": "Preaching",
+      "number": 5,
+      "front": "General_05_Front.png",
+      "back": "General_05_Back.png",
+      "sourceFront": "5.png",
+      "sourceBack": "39.png"
+    },
+    {
+      "id": "BondOfFaith",
+      "number": 6,
+      "front": "General_06_Front.png",
+      "back": "General_06_Back.png",
+      "sourceFront": "6.png",
+      "sourceBack": "35.png"
+    },
+    {
+      "id": "AggressiveMission",
+      "number": 7,
+      "front": "General_07_Front.png",
+      "back": "General_07_Back.png",
+      "sourceFront": "7.png",
+      "sourceBack": "38.png"
+    },
+    {
+      "id": "Penance",
+      "number": 8,
+      "front": "General_08_Front.png",
+      "back": "General_08_Back.png",
+      "sourceFront": "8.png",
+      "sourceBack": "34.png"
+    },
+    {
+      "id": "SolitaryReflection",
+      "number": 9,
+      "front": "General_09_Front.png",
+      "back": "General_09_Back.png",
+      "sourceFront": "9.png",
+      "sourceBack": "25.png"
+    },
+    {
+      "id": "CaravanInvestment",
+      "number": 10,
+      "front": "General_10_Front.png",
+      "back": "General_10_Back.png",
+      "sourceFront": "10.png",
+      "sourceBack": "29.png"
+    },
+    {
+      "id": "Council",
+      "number": 11,
+      "front": "General_11_Front.png",
+      "back": "General_11_Back.png",
+      "sourceFront": "11.png",
+      "sourceBack": "32.png"
+    },
+    {
+      "id": "WitchHunt",
+      "number": 12,
+      "front": "General_12_Front.png",
+      "back": "General_12_Back.png",
+      "sourceFront": "12.png",
+      "sourceBack": "28.png"
+    },
+    {
+      "id": "Reaper",
+      "number": 13,
+      "front": "General_13_Front.png",
+      "back": "General_13_Back.png",
+      "sourceFront": "13.png",
+      "sourceBack": "31.png"
+    },
+    {
+      "id": "RegularWorship",
+      "number": 14,
+      "front": "General_14_Front.png",
+      "back": "General_14_Back.png",
+      "sourceFront": "14.png",
+      "sourceBack": "27.png"
+    },
+    {
+      "id": "Heretic",
+      "number": 15,
+      "front": "General_15_Front.png",
+      "back": "General_15_Back.png",
+      "sourceFront": "15.png",
+      "sourceBack": "30.png"
+    },
+    {
+      "id": "PublicDenunciation",
+      "number": 16,
+      "front": "General_16_Front.png",
+      "back": "General_16_Back.png",
+      "sourceFront": "16.png",
+      "sourceBack": "26.png"
+    },
+    {
+      "id": "GlimmerOfHope",
+      "number": 17,
+      "front": "General_17_Front.png",
+      "back": "General_17_Back.png",
+      "sourceFront": "17.png",
+      "sourceBack": "41.png"
+    },
+    {
+      "id": "FalseRevelation",
+      "number": 18,
+      "front": "General_18_Front.png",
+      "back": "General_18_Back.png",
+      "sourceFront": "18.png",
+      "sourceBack": "43.png"
+    },
+    {
+      "id": "Blessing",
+      "number": 19,
+      "front": "General_19_Front.png",
+      "back": "General_19_Back.png",
+      "sourceFront": "19.png",
+      "sourceBack": "47.png"
+    },
+    {
+      "id": "ReturnToFaith",
+      "number": 20,
+      "front": "General_20_Front.png",
+      "back": "General_20_Back.png",
+      "sourceFront": "20.png",
+      "sourceBack": "42.png"
+    },
+    {
+      "id": "Paradise",
+      "number": 21,
+      "front": "General_21_Front.png",
+      "back": "General_21_Back.png",
+      "sourceFront": "21.png",
+      "sourceBack": "44.png"
+    },
+    {
+      "id": "CharityPot",
+      "number": -1,
+      "front": "Faction_CharityPot.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "청빈의 사도단/자선냄비.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "Tithe",
+      "number": -1,
+      "front": "Faction_Tithe.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "순금의 형제단/십일조.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "HumbleTemple",
+      "number": -1,
+      "front": "Faction_HumbleTemple.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "청빈의 사도단/누추한 성전.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "PoorRelief",
+      "number": -1,
+      "front": "Faction_PoorRelief.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "청빈의 사도단/빈민 구휼.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "AreaCleansing",
+      "number": -1,
+      "front": "Faction_AreaCleansing.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "절대 교율 교단/지역 정화.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "Confession",
+      "number": -1,
+      "front": "Faction_Confession.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "절대 교율 교단/고해성사.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "HeresyJudgment",
+      "number": -1,
+      "front": "Faction_HeresyJudgment.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "절대 교율 교단/이단 심판.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "Indulgence",
+      "number": -1,
+      "front": "Faction_Indulgence.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "순금의 형제단/면죄부.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "CallOfFur",
+      "number": -1,
+      "front": "Faction_CallOfFur.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "숲의 털가죽 교단/털가죽의 부름.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "WildRoar",
+      "number": -1,
+      "front": "Faction_WildRoar.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "숲의 털가죽 교단/야성의 포효.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "Inquisitor",
+      "number": -1,
+      "front": "Faction_Inquisitor.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "절대 교율 교단/이단 심문관.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "Interest",
+      "number": -1,
+      "front": "Faction_Interest.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "순금의 형제단/이자.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "FaithfulFollower",
+      "number": -1,
+      "front": "Faction_FaithfulFollower.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "숲의 털가죽 교단/신실한 신도.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "MassAgitation",
+      "number": -1,
+      "front": "Faction_MassAgitation.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "순금의 형제단/대규모 선동.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "RefusingFollower",
+      "number": -1,
+      "front": "Faction_RefusingFollower.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "숲의 털가죽 교단/거부하는 신도.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "Inerrancy",
+      "number": -1,
+      "front": "Faction_Inerrancy.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "절대 교율 교단/성서무오론.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "InterfaithLoan",
+      "number": -1,
+      "front": "Faction_InterfaithLoan.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "순금의 형제단/교단 간 고리대금업.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "SalvationFundraising",
+      "number": -1,
+      "front": "Faction_SalvationFundraising.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "청빈의 사도단/구세군 모금.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "MoltingRitual",
+      "number": -1,
+      "front": "Faction_MoltingRitual.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "숲의 털가죽 교단/털갈이 의식.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "Archbishop",
+      "number": -1,
+      "front": "Faction_Archbishop.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "절대 교율 교단/대주교.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "TempleRemodeling",
+      "number": -1,
+      "front": "Faction_TempleRemodeling.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "순금의 형제단/성전 리모델링.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "DeepForestSanctuary",
+      "number": -1,
+      "front": "Faction_DeepForestSanctuary.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "숲의 털가죽 교단/깊은 숲의 성역.png",
+      "sourceBack": "46.png"
+    },
+    {
+      "id": "FurRally",
+      "number": -1,
+      "front": "Faction_FurRally.png",
+      "back": "Unknown_Back.png",
+      "sourceFront": "1222.png",
+      "sourceBack": "46.png"
+    }
+  ]
+}

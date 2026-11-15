@@ -1,5 +1,13 @@
 {
   "name": "Pilgrimage.Editor",
-  "references": ["Pilgrimage.Runtime", "Pilgrimage.UI", "Unity.2D.Sprite.Editor"],
-  "includePlatforms": ["Editor"]
+  "references": [
+    "Pilgrimage.Runtime",
+    "Pilgrimage.UI",
+    "Unity.2D.Sprite.Editor",
+    "Unity.TextMeshPro",
+    "UnityEngine.UI"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ]
 }

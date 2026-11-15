@@ -10,7 +10,7 @@ namespace Pilgrimage.Tests
     {
         [Test] public void FinalCatalogHasFortyFiveStableIdsAndExactCosts()
         {
-            int[] costs = {8,0,0,-1,5,5,0,10,5,15,20,-1,25,5,0,5,0,0,4,5,2,5,-1,3,2,3,20,7,0,10,0,10,0,0,15,10,15,20,0,40,-1,3,5,30,40};
+            int[] costs = {5,0,1,-1,5,2,0,10,5,10,20,-1,30,5,0,5,0,0,4,8,2,5,-1,6,5,3,10,5,0,5,0,10,0,0,10,5,10,15,0,20,-1,5,10,10,20};
             Assert.That(CardCatalog.All.Count, Is.EqualTo(45));
             for (int i = 0; i < costs.Length; i++) {
                 var def = CardCatalog.Get((CardId)i); Assert.That(def.Cost, Is.EqualTo(costs[i]), def.Name);
@@ -19,7 +19,7 @@ namespace Pilgrimage.Tests
             }
             Assert.That((int)CardId.Paradise, Is.EqualTo(37));
             Assert.That(CardCatalog.Get(CardId.Inquisitor).Name, Is.EqualTo("이단 심판관"));
-            Assert.That(CardCatalog.Get(CardId.MassAgitation).CostText, Is.EqualTo("헌금 40"));
+            Assert.That(CardCatalog.Get(CardId.MassAgitation).CostText, Is.EqualTo("헌금 20"));
             Assert.That(CardCatalog.All.Count(c => c.Faction == FactionId.None), Is.EqualTo(22));
         }
         [Test] public void InitialFourPlayersHaveFinalResourcesDeckAndFourCardHands()
@@ -51,25 +51,25 @@ namespace Pilgrimage.Tests
                 Assert.That(game.Players[0].Offering, Is.EqualTo(8+count/10)); Conserved(game);
             }
         }
-        [Test] public void NaturalDecayIsNotStoppedByArchbishopAndRemodelingPolicyIsExplicit()
+        [Test] public void NaturalDecayIsNotStoppedByArchbishopOrAffectedByRemodeling()
         {
             var game=Game(); Play(game,CardId.Archbishop); NextRound(game);
             Assert.That(game.Players[0].Faith, Is.EqualTo(48));
             var doubled=Game(); Play(doubled,CardId.TempleRemodeling); NextRound(doubled);
-            Assert.That(doubled.Players[0].Faith, Is.EqualTo(46));
+            Assert.That(doubled.Players[0].Faith, Is.EqualTo(48));
             var plain=Game(policy:new TimedEffectPolicy{remodelingAffectsNaturalDecay=false});
             Play(plain,CardId.TempleRemodeling); NextRound(plain); Assert.That(plain.Players[0].Faith,Is.EqualTo(48));
         }
-        [Test] public void FaithTwentyAndThirtyBoundariesUseActorAndTargetIndependently()
+        [Test] public void MissionAndReliefIgnoreOwnFaithAndMissionCostUsesTargetFaith()
         {
             foreach(int own in new[]{20,21,30,31}) foreach(int targetFaith in new[]{30,31}) {
                 var game=Game(); Fund(game,0,200,own); Fund(game,1,200,targetFaith);
                 var card=Give(game,CardId.AggressiveMission);
-                Assert.That(game.EffectiveCost(0,card,new EffectTarget{PlayerIndex=1}),Is.EqualTo((targetFaith<=30?3:5)+(own<=30?1:0)));
-                Assert.That(game.CanPlay(0,card.InstanceId,out _,new EffectTarget{PlayerIndex=1}),Is.EqualTo(own>20));
+                Assert.That(game.EffectiveCost(0,card,new EffectTarget{PlayerIndex=1}),Is.EqualTo(targetFaith<=30?3:5));
+                Assert.That(game.CanPlay(0,card.InstanceId,out _,new EffectTarget{PlayerIndex=1}),Is.True);
                 var relief=Give(game,CardId.PoorRelief);
-                Assert.That(game.EffectiveCost(0,relief,new EffectTarget{PlayerIndex=1}),Is.EqualTo(25+(own<=30?1:0)));
-                Assert.That(game.CanPlay(0,relief.InstanceId,out _,new EffectTarget{PlayerIndex=1}),Is.EqualTo(own>20));
+                Assert.That(game.EffectiveCost(0,relief,new EffectTarget{PlayerIndex=1}),Is.EqualTo(30));
+                Assert.That(game.CanPlay(0,relief.InstanceId,out _,new EffectTarget{PlayerIndex=1}),Is.True);
             }
         }
         [Test] public void FaithAndDoctrineTenBoundariesReduceDrawIndependently()
@@ -79,7 +79,7 @@ namespace Pilgrimage.Tests
                 Assert.That(game.Players[0].Hand.Count,Is.EqualTo(4-(faith<=10?1:0)-(doctrine<=10?1:0)));
             }
         }
-        [Test] public void DoctrineThirtyDoublesHeldHereticConversionAndTwentyTriggersStartConversion()
+        [Test] public void HeldHereticConvertsOneAtAllDoctrineLevelsAndSharedStartConversionRemains()
         {
             foreach(int doctrine in new[]{20,21,30,31}) {
                 var game=Game(); Fund(game,0,200,50,doctrine);
@@ -87,7 +87,7 @@ namespace Pilgrimage.Tests
                 Give(game,CardId.Heretic);
                 var targets=game.Players[0].Deck.Where(c=>c.Definition.Id==CardId.Follower).ToArray();
                 game.EndActionTurn(0);
-                Assert.That(targets.Count(c=>c.Definition.Id==CardId.Heretic),Is.EqualTo(doctrine<=30?2:1));
+                Assert.That(targets.Count(c=>c.Definition.Id==CardId.Heretic),Is.EqualTo(1));
             }
             foreach(int doctrine in new[]{20,21}) {
                 var game=Game(false); Fund(game,0,5,50,doctrine+2); var top=Follower(game);
@@ -96,16 +96,17 @@ namespace Pilgrimage.Tests
         }
         [Test] public void WorshipOfferingClampAndPaidCardFailureUseFinalPayloads()
         {
-            var game=Game(false); Fund(game,0,0,99,99);
+            var game=Game(false); Fund(game,0,1,99,99);
             Play(game,CardId.RegularWorship); Assert.That(game.Players[0].Faith,Is.EqualTo(100)); Assert.That(game.Players[0].Offering,Is.Zero);
-            Play(game,CardId.RequestOffering); Assert.That(game.Players[0].Offering,Is.EqualTo(2)); Assert.That(game.Players[0].Doctrine,Is.EqualTo(98));
+            Play(game,CardId.RequestOffering); Assert.That(game.Players[0].Offering,Is.EqualTo(5)); Assert.That(game.Players[0].Doctrine,Is.EqualTo(95));
+            Fund(game,0,4);
             var paid=Give(game,CardId.Evangelism); Assert.That(game.TryPlay(0,paid.InstanceId,out _),Is.False);
         }
-        [Test] public void EvangelismPaysEightAndConservesPeopleAndIdentities()
+        [Test] public void EvangelismPaysFiveAndConservesPeopleAndIdentities()
         {
             var game=Game(); var known=new HashSet<Guid>(Cards(game).Select(c=>c.InstanceId)); int followers=game.Players[0].FollowerCount;
             var source=Play(game,CardId.Evangelism);
-            Assert.That(game.Players[0].Offering,Is.EqualTo(192)); Assert.That(game.Atheists,Is.EqualTo(98));
+            Assert.That(game.Players[0].Offering,Is.EqualTo(195)); Assert.That(game.Atheists,Is.EqualTo(98));
             Assert.That(game.Players[0].FollowerCount,Is.EqualTo(followers+2)); Assert.That(game.Players[0].Faith,Is.EqualTo(48));
             Assert.That(game.TryPlay(0,source.InstanceId,out _),Is.False); Conserved(game,known);
         }
@@ -127,7 +128,7 @@ namespace Pilgrimage.Tests
             var second=Give(game,CardId.Follower,0,CardPile.Deck); var deck=p.Deck.ToArray(); int count=p.FollowerCount;
             var source=Play(game,CardId.Indulgence);
             Assert.That(source.Definition.EffectKey,Is.EqualTo("Indulgence"));
-            Assert.That(p.Offering,Is.EqualTo(210)); Assert.That(p.ChurchProperty,Is.EqualTo(30)); Assert.That(p.Faith,Is.EqualTo(40)); Assert.That(p.Doctrine,Is.EqualTo(40));
+            Assert.That(p.Offering,Is.EqualTo(240)); Assert.That(p.ChurchProperty,Is.EqualTo(50)); Assert.That(p.Faith,Is.EqualTo(45)); Assert.That(p.Doctrine,Is.EqualTo(45));
             Assert.That(first.Definition.Id,Is.EqualTo(CardId.Heretic)); Assert.That(second.Definition.Id,Is.EqualTo(CardId.Follower));
             Assert.That(p.Deck,Is.EqualTo(deck)); Assert.That(p.FollowerCount,Is.EqualTo(count-1)); Conserved(game);
         }
@@ -135,7 +136,7 @@ namespace Pilgrimage.Tests
         {
             var game=Game(faction:FactionId.Gold); Play(game,CardId.Interest);
             var next=Give(game,CardId.Interest); Assert.That(game.TryPlay(0,next.InstanceId,out _),Is.False);
-            Assert.That(game.Players[0].Offering,Is.EqualTo(202)); Assert.That(game.Players[0].Hand.Contains(next),Is.True);
+            Assert.That(game.Players[0].Offering,Is.EqualTo(205)); Assert.That(game.Players[0].Hand.Contains(next),Is.True);
             NextRound(game); HumanTurn(game); Fund(game); var fresh=Give(game,CardId.Interest);
             Assert.That(game.TryPlay(0,fresh.InstanceId,out _),Is.True);
         }
@@ -145,7 +146,7 @@ namespace Pilgrimage.Tests
             var source=Give(game,CardId.Edict); var known=new HashSet<Guid>(Cards(game).Select(c=>c.InstanceId));
             var target=new EffectTarget{PlayerIndex=0,CardInstanceIds=new[]{one.InstanceId,two.InstanceId}};
             Assert.That(game.TryPlay(0,source.InstanceId,out _,target),Is.True);
-            Assert.That(game.Atheists,Is.EqualTo(102)); Assert.That(game.Players[0].Offering,Is.EqualTo(180));
+            Assert.That(game.Atheists,Is.EqualTo(102)); Assert.That(game.Players[0].Offering,Is.EqualTo(190));
             Assert.That(game.FindCard(one.InstanceId).Card,Is.SameAs(one)); Assert.That(game.FindCard(two.InstanceId).Pile,Is.EqualTo(CardPile.Removed)); Conserved(game,known);
             var duplicate=Give(game,CardId.Edict);
             Assert.That(game.TryPlay(0,duplicate.InstanceId,out _,new EffectTarget{PlayerIndex=0,CardInstanceIds=new[]{duplicate.InstanceId,duplicate.InstanceId}}),Is.False);

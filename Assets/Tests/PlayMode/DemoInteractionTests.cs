@@ -35,7 +35,7 @@ namespace Pilgrimage.Tests
             InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
 #endif
             keyboard = InputSystem.AddDevice<Keyboard>();
-            demo = new GameObject("Demo Under Test").AddComponent<DemoController>();
+            yield return SceneUITestFactory.Load(value => demo = value);
             yield return null;
             Assert.That(demo.IsModeSelectionOpen, Is.True);
             demo.SelectSinglePlayer();
@@ -113,7 +113,7 @@ namespace Pilgrimage.Tests
             Assert.That(demo.IsAnimating, Is.True);
             demo.PlaySelected(); // repeated input while animation is active
             yield return new WaitForSecondsRealtime(.2f);
-            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(5));
+            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(4));
             Assert.That(demo.Game.Players[0].Faith, Is.EqualTo(55));
             Assert.That(demo.Game.Players[0].Hand.Count, Is.EqualTo(hand - 1));
             Assert.That(demo.Game.FindCard(worship.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
@@ -135,8 +135,8 @@ namespace Pilgrimage.Tests
             ExecuteEvents.Execute(view.gameObject, click, ExecuteEvents.pointerClickHandler);
             Assert.That(demo.IsAnimating, Is.True); demo.PlaySelected();
             yield return new WaitForSecondsRealtime(.2f);
-            Assert.That(player.Offering, Is.EqualTo(110)); Assert.That(player.ChurchProperty, Is.EqualTo(10));
-            Assert.That(player.Faith, Is.EqualTo(40)); Assert.That(player.Doctrine, Is.EqualTo(40));
+            Assert.That(player.Offering, Is.EqualTo(140)); Assert.That(player.ChurchProperty, Is.EqualTo(30));
+            Assert.That(player.Faith, Is.EqualTo(45)); Assert.That(player.Doctrine, Is.EqualTo(45));
             Assert.That(player.FollowerCount, Is.EqualTo(before - 1)); Assert.That(player.TotalCardCount, Is.EqualTo(total));
             Assert.That(followers.All(c => c.Definition.Id == CardId.Heretic && game.FindCard(c.InstanceId).Card == c), Is.True);
             Assert.That(game.FindCard(source.InstanceId).Pile, Is.EqualTo(CardPile.Discard));
@@ -167,10 +167,11 @@ namespace Pilgrimage.Tests
             demo.SendMessage("Refresh"); yield return null;
             foreach (var view in demo.HandViews.Where(v => v.Card.Definition.CostKind == CardCostKind.None).ToArray())
             {
+                view.SetHighlight(true); yield return new WaitForSecondsRealtime(.3f);
                 var labels = view.GetComponentsInChildren<TMP_Text>();
                 Assert.That(labels.Any(t => t.name == "Cost" || t.name == "Category" || t.name == "Play State"), Is.False);
                 Assert.That(labels.Any(t => t.name == "Card Name"), Is.True);
-                Assert.That(labels.Any(t => t.name == "Card Number"), Is.True);
+                Assert.That(labels.Any(t => t.name == "Card Description"), Is.True);
                 demo.Select(view.Card.InstanceId); demo.ToggleDetail();
                 var detail = demo.GetComponentsInChildren<TMP_Text>().Single(t => t.name == "Detail Text");
                 Assert.That(detail.text, Is.EqualTo(CardPresentation.Detail(view.Card.Definition)));
@@ -227,7 +228,7 @@ namespace Pilgrimage.Tests
             demo.ChooseRemovalTarget(target.InstanceId); demo.ChooseRemovalTarget(target.InstanceId);
             Assert.That(demo.IsAnimating, Is.True);
             yield return new WaitForSecondsRealtime(.2f);
-            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(80));
+            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(90));
             Assert.That(demo.Game.FindCard(target.InstanceId).Pile, Is.EqualTo(CardPile.Removed));
             yield return new WaitForSecondsRealtime(0.4f);
             Assert.That(demo.HandViews.Count, Is.EqualTo(4));
@@ -254,7 +255,7 @@ namespace Pilgrimage.Tests
             Assert.That(demo.Game.Atheists, Is.EqualTo(99));
             Assert.That(demo.Game.Players[0].Faith, Is.EqualTo(63));
             Assert.That(demo.Game.Players[0].Doctrine, Is.EqualTo(75));
-            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(60)); // target faith 50 => mission cost 2
+            Assert.That(demo.Game.Players[0].Offering, Is.EqualTo(75)); // supplied costs: 10 + 5 + 5 + 0 + 5
             demo.ExitCardLab();
         }
 
@@ -280,7 +281,7 @@ namespace Pilgrimage.Tests
                     Assert.That(located, Is.Not.Null);
                     Assert.That(located.Pile == CardPile.Hand || located.Pile == CardPile.Discard, Is.True);
                     Assert.That(demo.Game.Players.SelectMany(p => p.Hand.Concat(p.Deck).Concat(p.Discard).Concat(p.Removed)).Count(c => c.InstanceId == demo.RevealedCardInstanceId), Is.EqualTo(1));
-                    Assert.That(demo.GetComponentsInChildren<TMP_Text>().Any(t => t.name == "Public Name" && t.text == demo.RevealedAiCard.Name), Is.True);
+                    Assert.That(demo.GetComponentsInChildren<CardView>().Any(v => v.name == "Public Card Visual" && v.Definition == demo.RevealedAiCard), Is.True);
                 }
                 if (demo.IsAiRunning && !checkedLock)
                 {
@@ -354,7 +355,7 @@ namespace Pilgrimage.Tests
             float deadline = Time.realtimeSinceStartup + 30;
             while (demo.IsAiRunning && Time.realtimeSinceStartup < deadline) yield return null;
             Assert.That(demo.IsAiRunning, Is.False); Assert.That(demo.Game.ActivePlayerIndex, Is.EqualTo(2));
-            Assert.That(demo.Game.Players[1].Offering, Is.EqualTo(2));
+            Assert.That(demo.Game.Players[1].Offering, Is.EqualTo(5));
             Assert.That(demo.Game.Players[1].FollowerCount, Is.EqualTo(followers + 2));
             Assert.That(demo.Game.Players[1].Discard.Count(c => c.InstanceId == source.InstanceId), Is.EqualTo(1));
             Assert.That(demo.Game.Atheists, Is.EqualTo(98));

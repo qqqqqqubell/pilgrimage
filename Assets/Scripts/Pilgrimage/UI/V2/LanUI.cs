@@ -17,10 +17,10 @@ namespace Pilgrimage.UI
         public LanNetworkSession Network { get; private set; }
         public LanGameView LanView { get; private set; }
         public string LanError { get; private set; }
-        private RectTransform modeScreen, lanScreen, lobbyContent;
-        private TMP_InputField lanName, lanRoomName, lanAddress, lanPort;
-        private TMP_Text lanStatus;
-        private Button labEntryButton, leaveLanButton, kickStalledButton;
+        [SerializeField] private RectTransform modeScreen, lanScreen, lobbyContent;
+        [SerializeField] private TMP_InputField lanName, lanRoomName, lanAddress, lanPort;
+        [SerializeField] private TMP_Text lanStatus;
+        [SerializeField] private Button labEntryButton, leaveLanButton, kickStalledButton;
         private int displayedReveal;
         private readonly Queue<LanReveal> lanPresentations=new Queue<LanReveal>();
         private readonly Dictionary<int,bool> lanResolved=new Dictionary<int,bool>();
@@ -31,6 +31,7 @@ namespace Pilgrimage.UI
         private ushort firewallPort;
         private LanFirewallState firewallState = LanFirewallState.Unsupported;
 
+#if UNITY_EDITOR
         private void BuildModeSelection()
         {
             factionSelection.gameObject.SetActive(false);
@@ -61,6 +62,7 @@ namespace Pilgrimage.UI
             kickStalledButton.gameObject.SetActive(false);
             modeScreen.SetAsLastSibling();
         }
+#endif
         public void SelectSinglePlayer()
         {
             if (Network != null || Game != null) return;
@@ -120,13 +122,9 @@ namespace Pilgrimage.UI
         private void ReturnFromLan(string reason)
         {
             if (Network != null) { Network.Changed -= OnLanChanged; Network.Closed -= ReturnFromLan; Destroy(Network); Network = null; }
-<<<<<<< Updated upstream
             StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false; SetEndLabel("행동 종료");
-=======
-            StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false;
             Visuals.ResetSession();
             lanPresentations.Clear();lanResolved.Clear();lanPresentationRoutine=null;
->>>>>>> Stashed changes
             Game = null; LanView = null; IsLanMode = false; LanError = reason; SelectedCardId = null; displayedReveal = 0;
             CloseCardPicker(); CloseDetail(); CloseLabPanel(); rewardRoot.gameObject.SetActive(false); revealedCard.gameObject.SetActive(false);
             RevealedCardInstanceId = null; RevealedAiCard = null;
@@ -173,7 +171,7 @@ namespace Pilgrimage.UI
                 string faction = assignment ? FactionSetup.Name(lobby.assignment[i]) : member==null ? "시작 시 배정" : FactionSetup.Name(member.desired);
                 Text(lobbyContent,"Lobby Seat "+i,state+"\n"+faction,new Vector2(-600+i*400,100),new Vector2(385,120),23);
                 if (lobby.host && member != null && member.connection != lobby.localConnection && ulong.TryParse(member.connection, out ulong kicked))
-                    Button(lobbyContent,"내보내기",new Vector2(-600+i*400,195),new Vector2(180,40),()=>Network.Kick(kicked));
+                    Button(lobbyContent,"내보내기 "+i,new Vector2(-600+i*400,195),new Vector2(180,40),()=>Network.Kick(kicked));
             }
             if (assignment) {
                 Text(lobbyContent,"Assignment Seed","최종 교단 배정 · 시드 "+lobby.seed+"\n모두 확인하면 게임을 시작합니다.",new Vector2(0,-50),new Vector2(1500,85),25);
@@ -190,25 +188,27 @@ namespace Pilgrimage.UI
         private void RefreshLanGame()
         {
             if(LanView==null) return;
+            PilgrimageAudio.Instance?.Observe(LanView.round,LanView.activePlayer,LanView.phase,LanView.winners!=null&&LanView.winners.Contains(LocalSeat));
             for(int relative=0;relative<4;relative++) {
                 var p=LanView.players[SeatAt(relative)];
+                UpdatePlayerPortrait(relative,p.faction);
                 playerLabels[relative].text=(p.seat==LanView.activePlayer&&LanView.phase==GamePhase.Actions?"▶ ":"") + p.name + (relative==0?" (나)":p.ai?" · AI":"");
                 playerLabels[relative].enableAutoSizing=true; playerLabels[relative].fontSizeMin=14; playerLabels[relative].fontSizeMax=24;
-                if(relative==0) { int[]v={p.offering,p.faith,p.doctrine,p.followers}; for(int j=0;j<4;j++)ownStats[j].text=v[j].ToString(); }
+                if(relative==0) { int[]v={p.handCount,p.faith,p.offering,p.doctrine}; for(int j=0;j<4;j++)ownStats[j].text=v[j].ToString(); }
                 else {
-                    opponentStats[relative-1,0].text=p.followers.ToString(); opponentStats[relative-1,1].text=p.offering.ToString(); opponentStats[relative-1,2].text=p.handCount.ToString();
-                    RenderLanBacks(relative,p.handCount);
+                    opponentStats[(relative-1)*4].text=p.handCount.ToString(); opponentStats[(relative-1)*4+1].text=p.faith.ToString(); opponentStats[(relative-1)*4+2].text=p.offering.ToString(); opponentStats[(relative-1)*4+3].text=p.doctrine.ToString();
+    
                 }
             }
-            roundText.text=$"ROUND {LanView.round:00} / 40     무신론자 {LanView.atheists}";
+            roundText.text=LanView.round.ToString();
+            if(atheistsText!=null)atheistsText.text="무신론자 "+LanView.atheists;
             activeText.text=LanView.phase==GamePhase.Finished?"승리\n"+string.Join(" · ",LanView.winners.Select(i=>LanView.players[i].name)):LanView.phase==GamePhase.RewardChoice?"카드 획득 결과":LanView.players[LanView.activePlayer].name+(LanView.activePlayer==LocalSeat?"\n내 차례":LanView.players[LanView.activePlayer].ai?"\nAI 차례":"\n상대 차례");
             activeText.enableAutoSizing=true; activeText.fontSizeMin=14;activeText.fontSizeMax=26;
             targetLabel.text=LanView.players[targetPlayer].name;
             UpdateLanEndButton();
             foreach(var view in handViews){view.gameObject.SetActive(false);Destroy(view.gameObject);} handViews.Clear();
             for(int i=0;i<LanView.hand.Length;i++) {
-                var card=Panel(handRoot,"My Card "+i,Vector2.zero,new Vector2(200,280),Color.black);
-                var view=card.gameObject.AddComponent<CardView>(); view.Bind(this,LanView.hand[i].DisplayCard(),i,1300);handViews.Add(view);
+                var view=Instantiate(cardPrefab,handRoot,false); view.name="My Card "+i; view.Bind(this,LanView.hand[i].DisplayCard(),i,1300);handViews.Add(view);
             }
             if(SelectedCardId.HasValue&&!handViews.Any(v=>v.Card.InstanceId==SelectedCardId))SelectedCardId=null;
             ApplySelection(); BuildLanRewards(); UpdateKickStalled();
@@ -221,9 +221,9 @@ namespace Pilgrimage.UI
             var area=opponentHands[relative-1];ClearChildren(area);
             for(int i=0;i<count;i++) {
                 float spacing=count<=1?0:Mathf.Min(56,(area.sizeDelta.x-65)/(count-1));
-                var back=Panel(area,"Private Card Back",new Vector2((i-(count-1)/2f)*spacing,0),new Vector2(62,82),new Color(.3f,.32f,.35f));back.GetComponent<Image>().raycastTarget=false;
+                var back=Instantiate(cardBackPrefab,area,false);back.name="Private Card Back";
+                back.anchoredPosition=new Vector2((i-(count-1)/2f)*spacing,0);
                 if(settings!=null&&settings.cardBack!=null)back.GetComponent<Image>().sprite=settings.cardBack;
-                else Text(back,"Back Symbol","?",Vector2.zero,new Vector2(54,70),30);
             }
         }
         private void BuildLanRewards()
@@ -294,7 +294,7 @@ namespace Pilgrimage.UI
             pickerContent.sizeDelta=new Vector2(1400,Mathf.Max(660,selection.cards.Length*70));
             for(int i=0;i<selection.cards.Length;i++) {
                 var c=selection.cards[i];var id=Guid.Parse(c.guid);Button choice=null;
-                choice=Button(pickerContent,CardCatalog.Get(c.id).Name+" · "+selection.piles[i]+" · "+id.ToString("N").Substring(0,8),new Vector2(0,-35-i*70),new Vector2(1300,60),()=>{ToggleCardTarget(id);choice.GetComponent<Image>().color=pendingCardTargets.Contains(id)?new Color(.2f,.5f,.38f):new Color(.13f,.3f,.31f);});AnchorTop((RectTransform)choice.transform);
+                choice=CardChoice(pickerContent,CardCatalog.Get(c.id).Name+" · "+selection.piles[i]+" · "+id.ToString("N").Substring(0,8),new Vector2(0,-35-i*70),new Vector2(1300,60),()=>{ToggleCardTarget(id);choice.GetComponent<Image>().color=pendingCardTargets.Contains(id)?new Color(.75f,.85f,.75f):Color.white;});AnchorTop((RectTransform)choice.transform);
             }
             cardPicker.gameObject.SetActive(true);cardPicker.SetAsLastSibling();
         }
@@ -323,9 +323,6 @@ namespace Pilgrimage.UI
                 float travel=Mathf.Max(.001f,reveal.travelSeconds);
                 for(float t=0;t<travel;t+=Time.unscaledDeltaTime){revealedCard.anchoredPosition=Vector2.Lerp(start,new Vector2(0,6),t/travel);revealedCard.localScale=Vector3.one*Mathf.Lerp(.45f,1,t/travel);yield return null;}
                 revealedCard.anchoredPosition=new Vector2(0,6);revealedCard.localScale=Vector3.one;
-<<<<<<< Updated upstream
-            } finally {IsAnimating=false;if(isActiveAndEnabled&&LanView!=null)UpdateLanEndButton();}
-=======
                 if(reveal.cutInSeconds>0&&(!reveal.completed||reveal.succeeded))Visuals.BeginCutIn(CardCatalog.Get(reveal.id),reveal.cutInSeconds/.8f);
             } finally {if(isActiveAndEnabled&&LanView!=null)endButton.interactable=LanCanAct;}
         }
@@ -342,7 +339,6 @@ namespace Pilgrimage.UI
                     lanResolved.Remove(reveal.serial);
                 }
             }finally{IsAnimating=false;lanPresentationRoutine=null;if(isActiveAndEnabled&&LanView!=null)RefreshLanGame();}
->>>>>>> Stashed changes
         }
         private void UpdateLanInput()
         {

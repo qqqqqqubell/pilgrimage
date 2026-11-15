@@ -31,12 +31,19 @@ namespace Pilgrimage
                     if (game.Players[actor].Offering < 10) { reason = "헌금이 10 이상이어야 합니다."; return false; }
                     break;
                 case CardId.HeresyJudgment:
-                    if (game.EffectPolicy.judgmentRequiresFullFollowers && game.Players[target.PlayerIndex].Doctrine < 30 &&
-                        EligibleFollowers(game.Players[target.PlayerIndex].Deck).Count() < 1 + game.JudgmentCount(actor, card))
+                    var judgmentTarget = game.Players[target.PlayerIndex];
+                    int judgmentChange = judgmentTarget.Statuses.Any(s => s.Protection == EffectProtection.DoctrineChanges)
+                        ? 0 : TimedCardEffects.StatChange(judgmentTarget, -(10 + 5 * game.JudgmentCount(actor, card)));
+                    if (game.EffectPolicy.judgmentRequiresFullFollowers && judgmentTarget.Doctrine + judgmentChange < 30 &&
+                        EligibleFollowers(judgmentTarget.Deck).Count() < 2 + game.JudgmentCount(actor, card))
                     { reason = "대상 덱의 신도가 부족합니다."; return false; }
                     break;
                 case CardId.CallOfFur:
-                    if (!FurCallTargets(game, target.PlayerIndex).Any()) { reason = "변환할 대상 신도가 없습니다."; return false; }
+                    var furCandidates = FurCallCandidates(game, target.PlayerIndex).ToArray();
+                    if (!furCandidates.Any()) { reason = "변환할 대상 신도가 없습니다."; return false; }
+                    if (target.Cards.Length > 2 || target.Cards.Distinct().Count() != target.Cards.Length ||
+                        target.Cards.Any(id => !furCandidates.Any(c => c.InstanceId == id)))
+                    { reason = "대상의 손패 또는 덱 위에서 신도를 최대 2장 선택하세요."; return false; }
                     break;
                 case CardId.FurRally:
                     if (target.PlayerIndex != actor || target.Cards.Length != 1 || !game.SelectableCards(actor, CardId.FurRally, card.InstanceId).Any(c => c.InstanceId == target.Cards[0]))
@@ -47,7 +54,7 @@ namespace Pilgrimage
                     { reason = "변환할 수 있는 자신의 신도가 없습니다."; return false; }
                     break;
                 case CardId.TempleRemodeling:
-                    if (game.EffectPolicy.remodelingRequiresProperty && game.Players[actor].ChurchProperty < 2)
+                    if (game.EffectPolicy.remodelingRequiresProperty && game.Players[actor].ChurchProperty < 5)
                     { reason = "교회 재산이 부족합니다."; return false; }
                     break;
                 case CardId.Edict:
@@ -100,7 +107,7 @@ namespace Pilgrimage
                     TimedCardEffects.Register(game, actor, context.Source, TimedEffectKind.Income, 2, addition: -3); break;
                 case CardId.TempleRemodeling:
                     TimedCardEffects.Register(game, actor, context.Source, TimedEffectKind.Income, 2, multiplier: 2);
-                    TimedCardEffects.Register(game, actor, context.Source, TimedEffectKind.DecreaseMultiplier, 2, multiplier: 2); break;
+                    break;
                 case CardId.Archbishop:
                     TimedCardEffects.Register(game, actor, context.Source, TimedEffectKind.PreventDecrease, 3); break;
                 case CardId.WitchHunt:
@@ -114,7 +121,16 @@ namespace Pilgrimage
                     TimedCardEffects.Register(game, actor, context.Source, TimedEffectKind.LoanRecovery, 1, targetOwner: context.Target.PlayerIndex);
                     game.AddShuffled(actor, CardId.Interest);
                     break;
-                case CardId.MassAgitation: ApplyToAll(game, actor, -40, false); break;
+                case CardId.MassAgitation:
+                    for (int owner = 0; owner < GameSession.PlayerCount; owner++)
+                    {
+                        if (owner == actor) continue;
+                        var recruited = EligibleFollowers(game.Players[owner].Deck).LastOrDefault();
+                        if (recruited == null || !game.Transfer(recruited.InstanceId, actor, CardPile.Deck)) continue;
+                        player.MutableDeck.Remove(recruited);
+                        player.MutableDeck.Insert(0, recruited);
+                    }
+                    break;
                 case CardId.AreaCleansing: ApplyToAll(game, actor, -30, true); break;
                 case CardId.FurRally:
                     game.Transform(context.Target.Cards[0], CardCatalog.Get(CardId.FaithfulFollower));
@@ -122,12 +138,15 @@ namespace Pilgrimage
                 case CardId.HeresyJudgment:
                     int uses = game.JudgmentCount(actor, context.Source);
                     var judged = game.Players[context.Target.PlayerIndex];
-                    if (judged.Doctrine >= 30)
-                        game.ApplyBasic(context.Target.PlayerIndex, new CardDefinition(id, "", "", 0, true, doctrineChange: -(5 + uses * 5)));
-                    else foreach (var follower in EligibleFollowers(judged.Deck).Take(1 + uses).ToArray()) game.RemoveCard(follower.InstanceId);
+                    game.ApplyBasic(context.Target.PlayerIndex, new CardDefinition(id, "", "", 0, true, doctrineChange: -(10 + uses * 5)));
+                    if (judged.Doctrine < 30)
+                        foreach (var follower in EligibleFollowers(judged.Deck).Take(2 + uses).ToArray()) game.RemoveCard(follower.InstanceId);
                     game.AddShuffled(actor, CardId.HeresyJudgment); break;
                 case CardId.CallOfFur:
-                    foreach (var follower in FurCallTargets(game, context.Target.PlayerIndex).ToArray()) game.Transform(follower.InstanceId, CardCatalog.Get(CardId.RefusingFollower));
+                    var furTargets = context.Target.Cards.Length == 0
+                        ? FurCallCandidates(game, context.Target.PlayerIndex).Take(2)
+                        : FurCallCandidates(game, context.Target.PlayerIndex).Where(c => context.Target.Cards.Contains(c.InstanceId));
+                    foreach (var follower in furTargets.ToArray()) game.Transform(follower.InstanceId, CardCatalog.Get(CardId.RefusingFollower));
                     break;
                 case CardId.RefusingFollower:
                     game.Transform(context.Source.InstanceId, CardCatalog.Get(CardId.Follower)); break;
@@ -179,13 +198,13 @@ namespace Pilgrimage
                     player.MutableDeck.Insert(0, new CardInstance(CardId.CharityPot));
                     break;
                 case CardId.Interest:
-                    player.Offering += System.Math.Max(0, player.ChurchProperty / 10);
+                    player.Offering += System.Math.Max(0, player.ChurchProperty / 4);
                     break;
                 case CardId.Indulgence:
                     Convert(game, player.Deck, 1, CardId.Heretic);
                     break;
                 case CardId.Inquisitor:
-                    foreach (CardInstance heretic in player.Hand.Where(c => c.Definition.Id == CardId.Heretic).ToArray())
+                    foreach (CardInstance heretic in player.Hand.Concat(player.Deck).Where(c => c.Definition.Id == CardId.Heretic).ToArray())
                         game.Transform(heretic.InstanceId, CardCatalog.Get(CardId.Follower));
                     break;
                 case CardId.MoltingRitual:
@@ -203,12 +222,13 @@ namespace Pilgrimage
             }
         }
 
-        private static IEnumerable<CardInstance> FurCallTargets(GameSession game, int owner)
+        private static IEnumerable<CardInstance> FurCallCandidates(GameSession game, int owner)
         {
             var player = game.Players[owner];
             var hand = EligibleFollowers(player.Hand).Where(c => c.Definition.Id != CardId.RefusingFollower);
-            if (!game.EffectPolicy.furCallConvertsAllHandFollowers) hand = hand.Take(1);
-            return hand.Concat(EligibleFollowers(player.Deck).Where(c => c.Definition.Id != CardId.RefusingFollower).Take(1));
+            // Explicit choices may use the hand or the first two eligible deck followers.
+            // Without a choice, resolve hand first, then scan from the deck top, two total.
+            return hand.Concat(EligibleFollowers(player.Deck).Where(c => c.Definition.Id != CardId.RefusingFollower).Take(2));
         }
 
         private static void ApplyToAll(GameSession game, int actor, int decrease, bool includeSelf)

@@ -30,12 +30,23 @@ namespace Pilgrimage.UI
             Impact=GetComponent<ImpactVfxPresenter>()??gameObject.AddComponent<ImpactVfxPresenter>();
             Popups=GetComponent<StatusPopupPresenter>()??gameObject.AddComponent<StatusPopupPresenter>();
             var effects=owner.Panel(parent,"Persistent VFX Layer",Vector2.zero,Vector2.zero,Color.clear);effects.GetComponent<UnityEngine.UI.Image>().raycastTarget=false;
-            effects.anchorMin=Vector2.zero;effects.anchorMax=Vector2.one;effects.offsetMin=effects.offsetMax=Vector2.zero;
+            if(owner.IsAuthoringUI){effects.anchorMin=Vector2.zero;effects.anchorMax=Vector2.one;effects.offsetMin=effects.offsetMax=Vector2.zero;}
             Impact.Initialize(owner,effects,assets,anchor);Popups.Initialize(owner,effects,anchor);CutIn.Initialize(owner,parent,assets);
             audioSource=GetComponent<AudioSource>()??gameObject.AddComponent<AudioSource>();audioSource.playOnAwake=false;audioSource.spatialBlend=0;
-            CutIn.Flash+=()=>PlaySound("cutin.flash",cutInFlashSound);
+            if(!owner.IsAuthoringUI)
+            {
+                PilgrimageAudio.Instance?.Register(audioSource);
+                CutIn.Started+=seconds=>PilgrimageAudio.Instance?.BeginCutIn(CutIn,seconds);
+                CutIn.Stopped+=()=>PilgrimageAudio.Instance?.EndCutIn(CutIn);
+                CutIn.Flash+=()=>PlaySound("cutin.flash",cutInFlashSound);
+            }
         }
-        private void PlaySound(string cue,AudioClip clip){SoundCue?.Invoke(cue);if(clip!=null)audioSource.PlayOneShot(clip);}
+        private void PlaySound(string cue,AudioClip clip)
+        {
+            SoundCue?.Invoke(cue);
+            if(clip!=null)PilgrimageAudio.Instance?.PlayClip(cue,clip);
+            else if(cue=="cutin.flash")PilgrimageAudio.Instance?.Play("cutin_impact");
+        }
         public void BeginCutIn(CardDefinition card,float scale)
         {if(VisualAssetLibrary.HasCutIn(card)){transform.SetAsLastSibling();StartCoroutine(CutIn.Play(card,scale));}}
         public void Submit(IEnumerable<GameVisualEvent> events)
@@ -52,15 +63,16 @@ namespace Pilgrimage.UI
                 while(queue.Count>0){var e=queue.Dequeue();processingCard=e.cause==VisualCause.Card;
                     if(processingCard){while(pendingReveals.Contains(Key(e.source,e.presentation))||CutIn.IsPlaying)yield return null;}
                     Impact.Show(e,TimeScale);Popups.Show(e,TimeScale);
+                    PilgrimageAudio.Instance?.Present(e,coinsSound!=null,impactSound!=null);
                     if(e.changes.Any(d=>d.kind==StatusKind.Offering&&d.amount>0))PlaySound("coins",coinsSound);
-                    else if(e.cause==VisualCause.Card)PlaySound("card.impact",impactSound);
+                    if(e.cause==VisualCause.Card)PlaySound("card.impact",impactSound);
                     if(processingCard)yield return new WaitForSecondsRealtime(Mathf.Max(.04f,.8f*TimeScale));
                     if(processingCard&&e.source!=null)processedCards.Add(Key(e.source,e.presentation));
                     processingCard=false;
                 }
             }finally {processingCard=false;drain=null;if(!resetting)Completed?.Invoke();}
         }
-        public void ResetSession(int serial=0){resetting=true;try{StopAllCoroutines();drain=null;queue.Clear();pendingReveals.Clear();processedCards.Clear();processingCard=false;LastEventSerial=serial;CutIn?.ResetVisuals();Impact?.Clear();Popups?.Clear();}finally{resetting=false;}}
+        public void ResetSession(int serial=0){PilgrimageAudio.Instance?.ResetGameplay();resetting=true;try{StopAllCoroutines();drain=null;queue.Clear();pendingReveals.Clear();processedCards.Clear();processingCard=false;LastEventSerial=serial;CutIn?.ResetVisuals();Impact?.Clear();Popups?.Clear();}finally{resetting=false;}}
         private void OnDisable()=>ResetSession(LastEventSerial);
     }
 }

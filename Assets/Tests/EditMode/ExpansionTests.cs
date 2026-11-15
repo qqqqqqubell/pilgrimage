@@ -9,20 +9,20 @@ namespace Pilgrimage.Tests
  {
   [Test] public void JudgmentFailureDoesNotCountAndPhysicalScopeUsesEachCopySeparately()
   {
-   var g=Game(policy:new TimedEffectPolicy{judgmentCountScope=JudgmentCountScope.PhysicalCard}); Fund(g,0,4);
+   var g=Game(policy:new TimedEffectPolicy{judgmentCountScope=JudgmentCountScope.PhysicalCard}); Fund(g,0,2);
    var first=Give(g,CardId.HeresyJudgment); var second=Give(g,CardId.HeresyJudgment); var target=new EffectTarget{PlayerIndex=1};
    Assert.That(g.TryPlay(0,first.InstanceId,out _,target),Is.False); Assert.That(g.Players[0].JudgmentUses,Is.Zero); Assert.That(first.SuccessfulUses,Is.Zero);
    Fund(g); Assert.That(g.TryPlay(0,first.InstanceId,out _,target),Is.True);
-   Assert.That(g.EffectiveCost(0,second,target),Is.EqualTo(5)); Assert.That(g.TryPlay(0,second.InstanceId,out _,target),Is.True);
+   Assert.That(g.EffectiveCost(0,second,target),Is.EqualTo(3)); Assert.That(g.TryPlay(0,second.InstanceId,out _,target),Is.True);
    Assert.That(g.Players[0].JudgmentUses,Is.EqualTo(2));
    var inclusive=Game(policy:new TimedEffectPolicy{judgmentIncludesCurrentUse=true}); var card=Give(inclusive,CardId.HeresyJudgment);
-   Assert.That(inclusive.EffectiveCost(0,card,target),Is.EqualTo(10));
+   Assert.That(inclusive.EffectiveCost(0,card,target),Is.EqualTo(4));
   }
   [Test] public void ArchbishopProtectionWinsOverRemodelingButNaturalDecayStillApplies()
   {
    var g=Game(); Play(g,CardId.TempleRemodeling); Play(g,CardId.Archbishop); Play(g,CardId.AreaCleansing);
    Assert.That(g.Players[0].Faith,Is.EqualTo(50)); Assert.That(g.Players[0].Doctrine,Is.EqualTo(50));
-   NextRound(g); Assert.That(g.Players[0].Faith,Is.EqualTo(46)); Assert.That(g.Players[0].Doctrine,Is.EqualTo(46));
+   NextRound(g); Assert.That(g.Players[0].Faith,Is.EqualTo(48)); Assert.That(g.Players[0].Doctrine,Is.EqualTo(48));
   }
   [Test] public void BlessingCanDrawProtectedFollowerAndSmallUpToEffectsNeedNoExtraTargets()
   {
@@ -37,7 +37,7 @@ namespace Pilgrimage.Tests
    foreach(var ids in cases) Assert.That(g.TryPlay(0,source.InstanceId,out _,new EffectTarget{PlayerIndex=0,CardInstanceIds=ids}),Is.False);
    Assert.That(g.Players[0].Offering,Is.EqualTo(200));
    Assert.That(g.TryPlay(0,source.InstanceId,out _,new EffectTarget{PlayerIndex=0,CardInstanceIds=new Guid[0]}),Is.True);
-   Assert.That(g.Players[0].Offering,Is.EqualTo(180)); Conserved(g);
+   Assert.That(g.Players[0].Offering,Is.EqualTo(190)); Conserved(g);
   }
   [Test] public void EveryFactionStartsAsHumanWithThreeUniqueOpponents()
   {
@@ -63,7 +63,7 @@ namespace Pilgrimage.Tests
     var own=Follower(g); var victim=Follower(g,1); var known=new HashSet<Guid>(Cards(g).Select(c=>c.InstanceId));
     if(!d.IsPlayable) { Assert.That(g.TryPlay(0,source.InstanceId,out _,target),Is.False); Assert.That(p.Hand.Contains(source),Is.True); Conserved(g,known); continue; }
     Assert.That(g.TryPlay(0,source.InstanceId,out string reason,target),Is.True,d.Name+": "+reason);
-    int extra=d.Id==CardId.Interest?2:d.Id==CardId.SalvationFundraising?1:d.Id==CardId.InterfaithLoan?-10:0;
+    int extra=d.Id==CardId.Interest?5:d.Id==CardId.SalvationFundraising?1:d.Id==CardId.InterfaithLoan?-10:0;
     Assert.That(p.Offering,Is.EqualTo(money-cost+d.OfferingGain+extra),d.Name+" money");
     Assert.That(p.ChurchProperty,Is.EqualTo(property+d.ChurchPropertyChange),d.Name+" property");
     Assert.That(p.Faith,Is.EqualTo(Math.Min(100,faith+d.FaithChange+(d.Id==CardId.AreaCleansing?-30:d.Id==CardId.DeepForestSanctuary?8:0))),d.Name+" faith");
@@ -83,14 +83,14 @@ namespace Pilgrimage.Tests
      case CardId.Indulgence: case CardId.WitchHunt: Assert.That(own.Definition.Id,Is.EqualTo(CardId.Heretic)); break;
      case CardId.MoltingRitual: Assert.That(p.Deck.Count(c=>c.Definition.Id==CardId.FaithfulFollower),Is.EqualTo(2)); break;
      case CardId.InterfaithLoan: Assert.That(g.Players[1].Offering,Is.EqualTo(210)); Assert.That(p.Deck.Count(c=>c.Definition.Id==CardId.Interest),Is.EqualTo(1)); break;
-     case CardId.HeresyJudgment: Assert.That(g.Players[1].Doctrine,Is.EqualTo(45)); Assert.That(p.JudgmentUses,Is.EqualTo(1)); Assert.That(p.Deck.Count(c=>c.Definition.Id==CardId.HeresyJudgment),Is.EqualTo(1)); break;
-     case CardId.CallOfFur: Assert.That(g.Players[1].Hand.All(c=>c.Definition.Id==CardId.RefusingFollower),Is.True); Assert.That(victim.Definition.Id,Is.EqualTo(CardId.RefusingFollower)); break;
+     case CardId.HeresyJudgment: Assert.That(g.Players[1].Doctrine,Is.EqualTo(40)); Assert.That(p.JudgmentUses,Is.EqualTo(1)); Assert.That(p.Deck.Count(c=>c.Definition.Id==CardId.HeresyJudgment),Is.EqualTo(1)); break;
+     case CardId.CallOfFur: Assert.That(g.Players[1].Hand.Count(c=>c.Definition.Id==CardId.RefusingFollower),Is.EqualTo(2)); Assert.That(victim.Definition.Id,Is.EqualTo(CardId.Follower)); break;
      case CardId.AreaCleansing: Assert.That(g.Players.All(q=>q.Faith==20&&q.Doctrine==20),Is.True); break;
-     case CardId.MassAgitation: Assert.That(g.Players.Skip(1).All(q=>q.Faith==10&&q.Doctrine==10),Is.True); break;
+     case CardId.MassAgitation: Assert.That(p.FollowerCount,Is.EqualTo(followers+3)); Assert.That(g.Players.Skip(1).All(q=>q.Faith==50&&q.Doctrine==50),Is.True); break;
      case CardId.FurRally: Assert.That(chosen.Definition.Id,Is.EqualTo(CardId.FaithfulFollower)); Assert.That(g.Players.Skip(1).All(q=>q.Faith==30&&q.Doctrine==30),Is.True); break;
      case CardId.WildRoar: Assert.That(g.Atheists,Is.EqualTo(97)); Assert.That(g.Players.Skip(1).All(q=>q.Deck[0].Definition.Id==CardId.Heretic),Is.True); break;
      case CardId.ReturnToFaith: Assert.That(p.Hand.Concat(p.Deck).All(c=>c.Definition.Id!=CardId.Heretic),Is.True); break;
-     case CardId.Inquisitor: Assert.That(p.Hand.All(c=>c.Definition.Id!=CardId.Heretic),Is.True); break;
+     case CardId.Inquisitor: Assert.That(p.Hand.Concat(p.Deck).All(c=>c.Definition.Id!=CardId.Heretic),Is.True); break;
     }
     Assert.That(g.FindCard(source.InstanceId).Pile,Is.EqualTo(CardPile.Discard)); Assert.That(g.TryPlay(0,source.InstanceId,out _,target),Is.False); Conserved(g,known);
    }
@@ -98,9 +98,9 @@ namespace Pilgrimage.Tests
   [Test] public void PenanceResolvesAfterFourSettlementsExactlyOnce()
   {
    var g=Game(); Play(g,CardId.Penance); var p=g.Players[0];
-   for(int n=1;n<=3;n++) { NextRound(g); Assert.That(p.Offering,Is.EqualTo(190+3*n)); Assert.That(p.Faith,Is.EqualTo(50-2*n)); }
-   NextRound(g); Assert.That(p.Offering,Is.EqualTo(222)); Assert.That(p.Faith,Is.EqualTo(52)); Assert.That(p.Doctrine,Is.EqualTo(52)); Assert.That(p.TimedEffects,Is.Empty);
-   NextRound(g); Assert.That(p.Offering,Is.EqualTo(225)); Conserved(g);
+   for(int n=1;n<=3;n++) { NextRound(g); Assert.That(p.Offering,Is.EqualTo(195+3*n)); Assert.That(p.Faith,Is.EqualTo(50-2*n)); }
+   NextRound(g); Assert.That(p.Offering,Is.EqualTo(227)); Assert.That(p.Faith,Is.EqualTo(52)); Assert.That(p.Doctrine,Is.EqualTo(52)); Assert.That(p.TimedEffects,Is.Empty);
+   NextRound(g); Assert.That(p.Offering,Is.EqualTo(230)); Conserved(g);
   }
   [Test] public void InvestmentUsesSeededInclusiveZeroToThirtyRangeAfterTwoSettlements()
   {
@@ -120,19 +120,19 @@ namespace Pilgrimage.Tests
    NextRound(t); Assert.That(t.Players[0].Offering,Is.EqualTo(195)); Assert.That(t.Players[0].TimedEffects,Is.Empty);
    NextRound(t); Assert.That(t.Players[0].Offering,Is.EqualTo(198)); Assert.That(t.Players[0].Faith,Is.EqualTo(59));
   }
-  [Test] public void RemodelingPaysTwoPropertyDoublesIncomeAndDecreasesThenExpires()
+  [Test] public void RemodelingPaysFivePropertyDoublesOnlyIncomeThenExpires()
   {
    var g=Game(); Play(g,CardId.TempleRemodeling); Play(g,CardId.RequestOffering); Play(g,CardId.RegularWorship);
-   Assert.That(g.Players[0].ChurchProperty,Is.EqualTo(18)); Assert.That(g.Players[0].Faith,Is.EqualTo(51));
-   NextRound(g); Assert.That(g.Players[0].Offering,Is.EqualTo(203)); Assert.That(g.Players[0].Faith,Is.EqualTo(47));
-   NextRound(g); Assert.That(g.Players[0].Offering,Is.EqualTo(209)); Assert.That(g.Players[0].TimedEffects,Is.Empty);
-   NextRound(g); Assert.That(g.Players[0].Offering,Is.EqualTo(212)); Assert.That(g.Players[0].Faith,Is.EqualTo(41));
+   Assert.That(g.Players[0].ChurchProperty,Is.EqualTo(15)); Assert.That(g.Players[0].Faith,Is.EqualTo(50));
+   NextRound(g); Assert.That(g.Players[0].Offering,Is.EqualTo(208)); Assert.That(g.Players[0].Faith,Is.EqualTo(48));
+   NextRound(g); Assert.That(g.Players[0].Offering,Is.EqualTo(214)); Assert.That(g.Players[0].TimedEffects,Is.Empty);
+   NextRound(g); Assert.That(g.Players[0].Offering,Is.EqualTo(217)); Assert.That(g.Players[0].Faith,Is.EqualTo(44));
   }
   [Test] public void ArchbishopBlocksCardDecreasesOnlyAndExpiresAfterThreeSettlements()
   {
    var g=Game(); Play(g,CardId.Archbishop); Play(g,CardId.AreaCleansing); Assert.That(g.Players[0].Faith,Is.EqualTo(50)); Assert.That(g.Players[1].Faith,Is.EqualTo(20));
    Play(g,CardId.RegularWorship); g.EndActionTurn(0); Play(g,CardId.FalseRevelation,1,new EffectTarget{PlayerIndex=0});
-   Assert.That(g.Players[0].Faith,Is.EqualTo(55)); Assert.That(g.Players[1].Offering,Is.EqualTo(185));
+   Assert.That(g.Players[0].Faith,Is.EqualTo(55)); Assert.That(g.Players[1].Offering,Is.EqualTo(190));
    for(int n=0;n<3;n++) NextRound(g); Assert.That(g.Players[0].TimedEffects,Is.Empty); Assert.That(g.Players[0].Faith,Is.EqualTo(49));
   }
   [Test] public void WitchHuntConfiguredPileAndProtectionPreserveIdentity()
@@ -156,11 +156,11 @@ namespace Pilgrimage.Tests
    var strict=Game(policy:new TimedEffectPolicy{remodelingRequiresProperty=true}); Fund(strict,0,200,50,50,1);
    var card=Give(strict,CardId.TempleRemodeling); Assert.That(strict.TryPlay(0,card.InstanceId,out _),Is.False);
   }
-  [Test] public void LoanTransfersTenThenRecoversThirtyAndAddsOneInterest()
+  [Test] public void LoanTransfersTenThenRecoversFortyAndAddsOneInterest()
   {
    var g=Game(faction:FactionId.Gold); Play(g,CardId.InterfaithLoan,0,new EffectTarget{PlayerIndex=1});
    Assert.That(g.Players[0].Offering,Is.EqualTo(190)); Assert.That(g.Players[1].Offering,Is.EqualTo(210));
-   NextRound(g); Assert.That(g.Players[0].Offering,Is.EqualTo(223)); Assert.That(g.Players[1].Offering,Is.EqualTo(183)); Assert.That(g.Players[0].TimedEffects,Is.Empty);
+   NextRound(g); Assert.That(g.Players[0].Offering,Is.EqualTo(233)); Assert.That(g.Players[1].Offering,Is.EqualTo(173)); Assert.That(g.Players[0].TimedEffects,Is.Empty);
   }
   [Test] public void LoanShortfallNeverGeneratesMoneyAndOptionalDebtIsRetained()
   {
@@ -168,7 +168,7 @@ namespace Pilgrimage.Tests
     var g=Game(policy:new TimedEffectPolicy{loanShortfall=mode}); Play(g,CardId.InterfaithLoan,0,new EffectTarget{PlayerIndex=1}); Fund(g,1,0); NextRound(g);
     Assert.That(g.Players[0].Offering,Is.EqualTo(196)); Assert.That(g.Players[1].Offering,Is.Zero);
     Assert.That(g.Players[0].TimedEffects.Count,Is.EqualTo(mode==LoanShortfallPolicy.CollectAvailable?0:1));
-    if(mode==LoanShortfallPolicy.CarryRemainder) Assert.That(g.Players[0].TimedEffects.Single().Outstanding,Is.EqualTo(27));
+    if(mode==LoanShortfallPolicy.CarryRemainder) Assert.That(g.Players[0].TimedEffects.Single().Outstanding,Is.EqualTo(37));
    }
    var low=Game(); Fund(low,0,9); var card=Give(low,CardId.InterfaithLoan);
    Assert.That(low.TryPlay(0,card.InstanceId,out _,new EffectTarget{PlayerIndex=1}),Is.False);
@@ -178,9 +178,9 @@ namespace Pilgrimage.Tests
    foreach(int doctrine in new[]{29,30}) {
     var g=Game(faction:FactionId.Discipline); Fund(g,1,200,50,doctrine); for(int n=0;n<3;n++) Give(g,CardId.Follower,1,CardPile.Deck);
     int people=g.Players[1].FollowerCount; var first=Play(g,CardId.HeresyJudgment,0,new EffectTarget{PlayerIndex=1});
-    Assert.That(g.Players[0].Offering,Is.EqualTo(195));
-    if(doctrine==30) Assert.That(g.Players[1].Doctrine,Is.EqualTo(25)); else Assert.That(g.Players[1].FollowerCount,Is.EqualTo(people-1));
-    var second=Give(g,CardId.HeresyJudgment); Assert.That(g.EffectiveCost(0,second,new EffectTarget{PlayerIndex=1}),Is.EqualTo(10));
+    Assert.That(g.Players[0].Offering,Is.EqualTo(197));
+    Assert.That(g.Players[1].Doctrine,Is.EqualTo(doctrine-10)); Assert.That(g.Players[1].FollowerCount,Is.EqualTo(people-2));
+    var second=Give(g,CardId.HeresyJudgment); Assert.That(g.EffectiveCost(0,second,new EffectTarget{PlayerIndex=1}),Is.EqualTo(4));
     Assert.That(g.TryPlay(0,second.InstanceId,out _,new EffectTarget{PlayerIndex=1}),Is.True);
     Assert.That(g.Players[0].JudgmentUses,Is.EqualTo(2)); Assert.That(g.Players[0].Deck.Count(c=>c.Definition.Id==CardId.HeresyJudgment),Is.EqualTo(2)); Conserved(g);
    }
@@ -189,10 +189,10 @@ namespace Pilgrimage.Tests
   {
    foreach(bool rescue in new[]{false,true}) {
     var g=Game(faction:FactionId.Fur); Play(g,CardId.CallOfFur,0,new EffectTarget{PlayerIndex=1});
-    var cards=g.Players[1].Hand.Concat(g.Players[1].Deck).Where(c=>c.Definition.Id==CardId.RefusingFollower).ToArray(); Assert.That(cards.Length,Is.EqualTo(5));
+    var cards=g.Players[1].Hand.Concat(g.Players[1].Deck).Where(c=>c.Definition.Id==CardId.RefusingFollower).ToArray(); Assert.That(cards.Length,Is.EqualTo(2));
     if(rescue) { g.EndActionTurn(0); Assert.That(g.TryPlay(1,cards[0].InstanceId,out _),Is.True); Assert.That(cards[0].Definition.Id,Is.EqualTo(CardId.Follower)); }
     NextRound(g); NextRound(g); Assert.That(cards.Count(c=>c.Definition.Id==CardId.FaithfulFollower),Is.Zero); NextRound(g);
-    Assert.That(cards.Count(c=>c.Definition.Id==CardId.FaithfulFollower),Is.EqualTo(rescue?4:5));
+    Assert.That(cards.Count(c=>c.Definition.Id==CardId.FaithfulFollower),Is.EqualTo(rescue?1:2));
     foreach(var c in cards.Where(c=>c.Definition.Id==CardId.FaithfulFollower)) { Assert.That(g.FindCard(c.InstanceId).Owner,Is.Zero); Assert.That(g.FindCard(c.InstanceId).Card,Is.SameAs(c)); }
     Assert.That(g.PopulationTotal,Is.EqualTo(120)); Conserved(g);
    }
@@ -225,6 +225,59 @@ namespace Pilgrimage.Tests
     Assert.That(g.Phase,Is.EqualTo(GamePhase.Finished)); Assert.That(g.RewardHistory.Count,Is.EqualTo(40)); Assert.That(g.Winners,Is.Not.Empty);
     Assert.That(g.Winners.All(i=>g.Players[i].FollowerCount==g.Players.Max(p=>p.FollowerCount)),Is.True);
    }
+  }
+  [Test] public void MassAgitationTakesBottomEligibleFollowerFromEachOpponentToOwnTop()
+  {
+   var g=Game(); var expected=new List<CardInstance>();
+   for(int owner=1;owner<4;owner++) {
+    expected.Add(Give(g,CardId.Follower,owner,CardPile.Deck));
+    Give(g,CardId.FaithfulFollower,owner,CardPile.Deck);
+   }
+   var known=new HashSet<Guid>(Cards(g).Select(c=>c.InstanceId));
+   Play(g,CardId.MassAgitation);
+   Assert.That(g.Players[0].Deck.Take(3),Is.EqualTo(expected.AsEnumerable().Reverse()));
+   foreach(var c in expected) Assert.That(g.FindCard(c.InstanceId).Owner,Is.Zero);
+   Assert.That(g.Players.Skip(1).All(p=>p.Deck.Last().Definition.Id==CardId.FaithfulFollower&&p.Faith==50&&p.Doctrine==50),Is.True);
+   Assert.That(g.Players[0].Offering,Is.EqualTo(180)); Conserved(g,known);
+  }
+  [Test] public void JudgmentChecksResultingDoctrineAndRemovesOnlyAvailableUnprotectedPeople()
+  {
+   foreach(int initial in new[]{39,40}) {
+    var g=Game(); Fund(g,1,200,50,initial); var normal=Follower(g,1); var protectedCard=Give(g,CardId.FaithfulFollower,1,CardPile.Deck);
+    var known=new HashSet<Guid>(Cards(g).Select(c=>c.InstanceId));
+    Play(g,CardId.HeresyJudgment,0,new EffectTarget{PlayerIndex=1});
+    Assert.That(g.Players[1].Doctrine,Is.EqualTo(initial-10));
+    Assert.That(g.FindCard(normal.InstanceId).Pile,Is.EqualTo(initial==39?CardPile.Removed:CardPile.Deck));
+    Assert.That(g.FindCard(protectedCard.InstanceId).Pile,Is.EqualTo(CardPile.Deck));
+    Assert.That(g.Atheists,Is.EqualTo(initial==39?101:100)); Conserved(g,known);
+   }
+  }
+  [Test] public void InquisitorConvertsAllHandAndDeckHereticsButLeavesDiscardUnchanged()
+  {
+   var g=Game(); var converted=new List<CardInstance>();
+   for(int n=0;n<3;n++) { converted.Add(Give(g,CardId.Heretic)); converted.Add(Give(g,CardId.Heretic,0,CardPile.Deck)); }
+   var discarded=Give(g,CardId.Heretic,0,CardPile.Discard); var known=new HashSet<Guid>(Cards(g).Select(c=>c.InstanceId));
+   Play(g,CardId.Inquisitor);
+   Assert.That(converted.All(c=>c.Definition.Id==CardId.Follower),Is.True); Assert.That(discarded.Definition.Id,Is.EqualTo(CardId.Heretic));
+   Assert.That(g.Players[0].Offering,Is.EqualTo(192)); Conserved(g,known);
+  }
+  [Test] public void InterestUsesQuarterPropertyWithFloorAndTitheHasNewPayload()
+  {
+   var g=Game(); Fund(g,0,200,50,50,23); Play(g,CardId.Interest); Assert.That(g.Players[0].Offering,Is.EqualTo(205));
+   Play(g,CardId.Tithe); Assert.That(g.Players[0].Offering,Is.EqualTo(208)); Assert.That(g.Players[0].ChurchProperty,Is.EqualTo(28));
+   Play(g,CardId.Council); Assert.That(g.Players[0].Doctrine,Is.EqualTo(75));
+  }
+  [Test] public void FurCallCanSelectTwoDeckFollowersAndRejectsExcessOrProtectedCardsWithoutPayment()
+  {
+   var g=Game(policy:new TimedEffectPolicy{furCallConvertsAllHandFollowers=true});
+   var first=Follower(g,1); var second=Give(g,CardId.Follower,1,CardPile.Deck); var protectedCard=Give(g,CardId.FaithfulFollower,1,CardPile.Deck);
+   var source=Give(g,CardId.CallOfFur); int money=g.Players[0].Offering;
+   foreach(var ids in new[]{new[]{first.InstanceId,second.InstanceId,g.Players[1].Hand[0].InstanceId},new[]{protectedCard.InstanceId},new[]{first.InstanceId,first.InstanceId}})
+    Assert.That(g.TryPlay(0,source.InstanceId,out _,new EffectTarget{PlayerIndex=1,CardInstanceIds=ids}),Is.False);
+   Assert.That(g.Players[0].Offering,Is.EqualTo(money));
+   Assert.That(g.TryPlay(0,source.InstanceId,out _,new EffectTarget{PlayerIndex=1,CardInstanceIds=new[]{first.InstanceId,second.InstanceId}}),Is.True);
+   Assert.That(g.Players[1].Hand.All(c=>c.Definition.Id!=CardId.RefusingFollower),Is.True);
+   Assert.That(new[]{first,second}.All(c=>c.Definition.Id==CardId.RefusingFollower),Is.True); Conserved(g);
   }
  }
 }

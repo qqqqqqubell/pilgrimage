@@ -13,7 +13,7 @@ namespace Pilgrimage.Tests
     public sealed class LanInteractionTests
     {
         private DemoController demo;
-        [UnitySetUp] public IEnumerator Setup(){demo=new GameObject("LAN UI Test").AddComponent<DemoController>();yield return null;}
+        [UnitySetUp] public IEnumerator Setup(){yield return SceneUITestFactory.Load(value=>demo=value);yield return null;}
         [UnityTearDown] public IEnumerator Cleanup(){if(demo!=null)Object.Destroy(demo.gameObject);yield return null;yield return null;}
         [UnityTest] public IEnumerator ModeSelectionKeepsOfflineGameUnstartedAndSinglePlayerRetainsFactionAndLab()
         {

@@ -197,8 +197,7 @@ namespace Pilgrimage
                     if (def.Target == TargetKind.Self && target.Index != view.Actor) continue;
                     if (def.Target != TargetKind.Self && target.Index == view.Actor && !view.AllowSelfAsOpponentTarget) continue;
                     int uses = (view.JudgmentByInstance ? card.SuccessfulUses : view.JudgmentUses) + (view.JudgmentIncludesCurrent ? 1 : 0);
-                    int cost = def.Id == CardId.HeresyJudgment ? 5 + uses * 5 : def.Id == CardId.AggressiveMission ? target.Faith <= 30 ? 3 : 5 : def.Cost;
-                    if ((def.Id == CardId.AggressiveMission || def.Id == CardId.PoorRelief) && view.Self.Faith <= 30) cost++;
+                    int cost = def.Id == CardId.HeresyJudgment ? 3 + uses : def.Id == CardId.AggressiveMission ? target.Faith <= 30 ? 3 : 5 : def.Cost;
                     if (cost < 0 || cost > view.Self.Offering || !PublicConditions(view, def)) continue;
                     float score = Evaluate(view, def, target, cost, settings.For(view.Self.Faction));
                     if (cost > 0 && settings.savingPenalty > 0)
@@ -226,7 +225,6 @@ namespace Pilgrimage
 
         private static bool PublicConditions(AiObservation v, CardDefinition def)
         {
-            if ((def.Id == CardId.AggressiveMission || def.Id == CardId.PoorRelief) && v.Self.Faith <= 20) return false;
             if (v.RequiresAtheists && def.AtheistChange < 0 && v.Atheists < -def.AtheistChange) return false;
             switch (def.Id)
             {
@@ -235,7 +233,7 @@ namespace Pilgrimage
                 case CardId.Interest: return !v.InterestUsed;
                 case CardId.Paradise: return v.Self.Followers >= 20;
                 case CardId.WitchHunt: return v.OwnWitchHuntTargets > 0;
-                case CardId.TempleRemodeling: return !v.RemodelingRequiresProperty || v.OwnChurchProperty >= 2;
+                case CardId.TempleRemodeling: return !v.RemodelingRequiresProperty || v.OwnChurchProperty >= 5;
                 case CardId.WildRoar: return v.Self.Faith >= 40 && v.Atheists >= 3;
                 case CardId.Indulgence: return !v.RequireFullFollowerTargets || v.OwnDeckFollowers >= 1;
                 case CardId.MoltingRitual: return v.OwnDeckFollowers >= 2;
@@ -263,7 +261,6 @@ namespace Pilgrimage
                     money -= Math.Min(3, v.OwnRoundIncome) * Math.Min(2, remainingRounds) * discount; break;
                 case CardId.TempleRemodeling:
                     money += v.OwnRoundIncome * Math.Min(2, remainingRounds) * discount;
-                    faction -= 2; // Risk of doubled future decreases, a heuristic valued by the profile.
                     break;
                 case CardId.Archbishop:
                     if (!v.HasDecreaseProtection) faction += Math.Min(3, remainingRounds + 1); break;
@@ -271,14 +268,16 @@ namespace Pilgrimage
                 case CardId.RefusingFollower: followers = v.Self.Faction == FactionId.Fur ? 0 : 1; faction -= v.Self.Faction == FactionId.Fur ? 1 : 0; break;
                 case CardId.InterfaithLoan:
                     money -= 10;
-                    if (remainingRounds >= 1) money += Math.Min(30, target.Offering + 10 + GameSession.RoundOffering + target.Followers / 10) * discount;
+                    if (remainingRounds >= 1) money += Math.Min(40, target.Offering + 10 + GameSession.RoundOffering + target.Followers / 10) * discount;
                     future++; break;
                 case CardId.HeresyJudgment:
-                    if (target.Doctrine >= 30) disruption = Math.Min(target.Doctrine, cost) / 10f;
-                    else disruption = Math.Min(target.Followers, (cost - 5) / 5 + 1);
-                    if (disruption > 0) future++; break;
+                    int judgmentDecrease = 10 + (cost - 3) * 5;
+                    disruption = Math.Min(target.Doctrine, judgmentDecrease) / 10f;
+                    if (target.Doctrine - judgmentDecrease < 30) disruption += Math.Min(target.Followers, 2 + cost - 3);
+                    future++; break;
                 case CardId.CallOfFur: disruption = Math.Min(2, target.Followers); faction++; break;
-                case CardId.MassAgitation: disruption = v.Players.Where(p => p.Index != v.Actor).Sum(p => Math.Min(40, p.Faith) + Math.Min(40, p.Doctrine)) / 10f; break;
+                case CardId.MassAgitation:
+                    followers = v.Players.Count(p => p.Index != v.Actor && p.Followers > 0); disruption = followers; break;
                 case CardId.AreaCleansing:
                     disruption = v.Players.Where(p => p.Index != v.Actor).Sum(p => Math.Min(30, p.Faith) + Math.Min(30, p.Doctrine)) / 10f;
                     faith = -30; doctrine = -30; break;
@@ -294,9 +293,9 @@ namespace Pilgrimage
                 case CardId.PublicDenunciation: disruption = 1; break;
                 case CardId.Reaper: disruption = 2; break;
                 case CardId.SalvationFundraising: money++; future++; break;
-                case CardId.Interest: money += Math.Max(0, v.OwnChurchProperty / 10); break;
+                case CardId.Interest: money += Math.Max(0, v.OwnChurchProperty / 4); break;
                 case CardId.Indulgence: followers = -Math.Min(1, v.OwnDeckFollowers); break;
-                case CardId.Inquisitor: followers = v.Hand.Count(h => h.Definition.Id == CardId.Heretic); break;
+                case CardId.Inquisitor: followers = v.OwnHeretics; break;
                 case CardId.MoltingRitual: faction += Math.Min(2, v.OwnDeckFollowers); break;
                 case CardId.DeepForestSanctuary: faith = (v.OwnDeckFaithful + v.Hand.Count(h => h.Definition.Id == CardId.FaithfulFollower)) / 4 * 8; break;
                 case CardId.WildRoar: disruption = 3; break;
@@ -313,12 +312,12 @@ namespace Pilgrimage
                     case CardId.InterfaithLoan: money = 0; break;
                     case CardId.HeresyJudgment:
                         disruption = 0;
-                        if (v.Self.Doctrine >= 30) doctrine = -cost;
-                        else followers = -Math.Min(v.OwnDeckFollowers, (cost - 5) / 5 + 1);
+                        doctrine = -(10 + (cost - 3) * 5);
+                        if (v.Self.Doctrine + doctrine * v.DoctrineDecreaseMultiplier < 30) followers = -Math.Min(v.OwnDeckFollowers, 2 + cost - 3);
                         break;
                     case CardId.CallOfFur:
                         disruption = 0;
-                        if (v.Self.Faction != FactionId.Fur) { followers = -Math.Min(v.Self.Followers, v.Self.HandCount + 1); faction = 0; }
+                        if (v.Self.Faction != FactionId.Fur) { followers = -Math.Min(2, v.Self.Followers); faction = 0; }
                         break;
                     case CardId.PublicDenunciation: followers = -Math.Min(1, v.OwnDeckFollowers); disruption = 0; break;
                     case CardId.Reaper: followers = -Math.Min(2, v.OwnDeckFollowers); disruption = 0; break;

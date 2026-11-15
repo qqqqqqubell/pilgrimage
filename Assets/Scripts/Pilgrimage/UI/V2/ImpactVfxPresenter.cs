@@ -12,7 +12,10 @@ namespace Pilgrimage.UI
         private sealed class Slot {internal Image image;internal Sprite[] frames;internal float start,duration;internal bool active;internal ImpactKind kind;}
         private readonly List<Slot> pool=new List<Slot>();private DemoController owner;private RectTransform root;private VisualAssetLibrary assets;private Func<int,Vector2> anchor;
         public int PoolSize=>pool.Count;public int LastTarget {get;private set;}=-1;public ImpactKind LastKind {get;private set;}
-        public void Initialize(DemoController controller,RectTransform parent,VisualAssetLibrary library,Func<int,Vector2> locate){owner=controller;root=parent;assets=library;anchor=locate;}
+        public void Initialize(DemoController controller,RectTransform parent,VisualAssetLibrary library,Func<int,Vector2> locate){owner=controller;root=parent;assets=library;anchor=locate;pool.Clear();
+            if(controller.IsAuthoringUI) for(int i=0;i<96;i++){var element=owner.Panel(root,"Impact VFX",Vector2.zero,new Vector2(260,260),Color.white).GetComponent<Image>();element.raycastTarget=false;element.gameObject.SetActive(false);}
+            foreach(Transform child in root) if(child.name=="Impact VFX"){var element=child.GetComponent<Image>();pool.Add(new Slot{image=element});element.gameObject.SetActive(false);}
+        }
         public static ImpactKind Classify(GameVisualEvent e,int player)
         {
             var changes=e.changes.Where(d=>d.player==player).ToArray();
@@ -29,15 +32,15 @@ namespace Pilgrimage.UI
         }
         public void Show(GameVisualEvent e,float scale=1)
         {
-            if(assets==null)return;
+
             foreach(int player in e.changes.Select(d=>d.player).Where(i=>i>=0).Distinct()){
                 var kind=Classify(e,player);if(kind==ImpactKind.None)continue;var s=pool.Find(p=>!p.active);
-                if(s==null){s=new Slot{image=owner.Panel(root,"Impact VFX",Vector2.zero,new Vector2(260,260),Color.white).GetComponent<Image>()};s.image.raycastTarget=false;pool.Add(s);}
-                s.frames=kind==ImpactKind.Hit1?assets.hit1:kind==ImpactKind.Hit2?assets.hit2:kind==ImpactKind.Explosion?assets.explosion1:kind==ImpactKind.Coins?assets.coins:null;
+                if(s==null){s=pool[0];s.active=false;}
+                s.frames=assets==null?null:kind==ImpactKind.Hit1?assets.hit1:kind==ImpactKind.Hit2?assets.hit2:kind==ImpactKind.Explosion?assets.explosion1:kind==ImpactKind.Coins?assets.coins:null;
                 s.kind=kind;s.start=Time.unscaledTime;s.duration=Mathf.Max(.04f,(kind==ImpactKind.Coins ? .8f : .5f)*scale);s.active=true;
                 s.image.rectTransform.anchoredPosition=anchor(player);s.image.rectTransform.sizeDelta=new Vector2(kind==ImpactKind.Explosion?360:240,kind==ImpactKind.Explosion?360:240);
                 s.image.gameObject.SetActive(true);s.image.preserveAspect=true;
-                s.image.color=kind==ImpactKind.Defense?new Color(.25f,.65f,1,.22f):kind==ImpactKind.Buff?new Color(.25f,1,.55f,.18f):Color.white;
+                s.image.color=s.frames!=null?Color.white:kind==ImpactKind.Defense?new Color(.25f,.65f,1,.22f):new Color(.25f,1,.55f,.18f);
                 s.image.sprite=s.frames?.FirstOrDefault();LastTarget=player;LastKind=kind;
             }
         }

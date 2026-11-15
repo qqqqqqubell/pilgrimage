@@ -29,22 +29,24 @@ namespace Pilgrimage.UI
         public Sprite Illustration => settings != null ? settings.cardIllustration : null;
         private TMP_FontAsset font;
         private bool ownsFont;
-        private RectTransform root, handRoot, modal, rewardRoot;
-        private TMP_Text roundText, messageText, detailText;
-        private TMP_Text activeText, revealedName, revealedNumber;
-        private RectTransform revealedCard;
-        private readonly TMP_Text[,] opponentStats = new TMP_Text[3, 3];
-        private readonly TMP_Text[] ownStats = new TMP_Text[4];
+        [SerializeField] private RectTransform root, handRoot, modal, rewardRoot;
+        [SerializeField] private TMP_Text roundText, messageText, detailText;
+        [SerializeField] private TMP_Text activeText, revealedName, revealedNumber;
+        [SerializeField] private TMP_Text atheistsText;
+        [SerializeField] private RectTransform revealedCard;
+        [SerializeField] private CardView submittedCardView;
+        [SerializeField] private TMP_Text[] opponentStats = new TMP_Text[12];
+        [SerializeField] private TMP_Text[] ownStats = new TMP_Text[4];
         private AiSettings aiSettings;
         private RuleBasedAi[] aiPlayers;
-        private Button manualAiButton;
-        private readonly TMP_Text[] playerLabels = new TMP_Text[4];
-        private readonly RectTransform[] opponentHands = new RectTransform[3];
+        [SerializeField] private Button manualAiButton;
+        [SerializeField] private TMP_Text[] playerLabels = new TMP_Text[4];
+        [SerializeField] private RectTransform[] opponentHands = new RectTransform[3];
         private readonly List<CardView> handViews = new List<CardView>();
         private readonly List<string> logs = new List<string>();
-        private TMP_Text logText, targetLabel;
-        private Button endButton, debugButton;
-        private Button grantDebugButton;
+        [SerializeField] private TMP_Text logText, targetLabel;
+        [SerializeField] private Button endButton, debugButton;
+        [SerializeField] private Button grantDebugButton;
         private int targetPlayer = 1;
         private bool keyboardSelection;
         private GameObject ownedEventSystem;
@@ -55,9 +57,8 @@ namespace Pilgrimage.UI
             if (Debug.isDebugBuild || Application.isEditor)
                 Debug.Log("Pilgrimage 카드 검증 (개발 로그)\n" + string.Join("\n", CardPresentation.Diagnostics(CardCatalog.All)));
             aiSettings = settings != null && settings.ai != null ? settings.ai : new AiSettings();
-            BuildUI();
-            BuildFactionSelection();
-            BuildModeSelection();
+            if (root == null) { Debug.LogError("Pilgrimage: authored scene UI is missing. Open PilgrimageDemo or SampleScene.", this); enabled = false; return; }
+            BindSceneUI();
             BuildGameplayVisuals();
         }
 
@@ -83,6 +84,7 @@ namespace Pilgrimage.UI
                 Debug.LogWarning("Pilgrimage: 폰트에 한글 글리프가 없습니다: " + string.Join(",", missing));
         }
 
+#if UNITY_EDITOR
         private void BuildUI()
         {
             var cameraObject = new GameObject("Demo Background Camera", typeof(Camera));
@@ -163,21 +165,24 @@ namespace Pilgrimage.UI
             modal.gameObject.SetActive(false);
             BuildCardLabUI();
         }
+#endif
 
+#if UNITY_EDITOR
         private void BuildPlayerPanel(int index, Vector2 position, Vector2 size)
         {
             RectTransform panel = Panel(root, $"Player {index} Table", position, size, index == 0 ? new Color(0.1f, 0.22f, 0.23f) : new Color(0.095f, 0.13f, 0.17f));
             playerLabels[index] = Text(panel, "Public Stats", "", new Vector2(index == 0 ? -550 : 0, index == 0 ? 0 : size.y / 2 - 30), new Vector2(index == 0 ? 380 : size.x - 24, 42), 24);
             if (index == 0)
             {
-                string[] glyphs = { "$", "믿", "율", "人" };
+                string[] glyphs = { "패", "믿", "$", "율" };
                 for (int i = 0; i < 4; i++) ownStats[i] = StatChip(panel, glyphs[i], new Vector2(-155 + i * 180, 0), i);
             }
-            else for (int i = 0; i < 3; i++) opponentStats[index - 1, i] = StatChip(panel, new[] { "人", "$", "패" }[i], new Vector2(-100 + i * 100, index == 1 ? 20 : 108), i);
+            else for (int i = 0; i < 4; i++) opponentStats[(index - 1) * 4 + i] = StatChip(panel, new[] { "패", "믿", "$", "율" }[i], new Vector2(-100 + i * 100, index == 1 ? 20 : 108), i);
             Button(panel, index == 0 ? "내 추가 상태" : "상태", new Vector2(size.x / 2 - (index == 0 ? 100 : 48), -size.y / 2 + 23), new Vector2(index == 0 ? 170 : 80, 33), () => ShowPlayerStats(index));
             if (index > 0)
                 opponentHands[index - 1] = Rect(panel, "Private Hand Backs", new Vector2(0, index == 1 ? -47 : -26), new Vector2(size.x - 25, index == 1 ? 80 : 200));
         }
+#endif
 
         private TMP_Text StatChip(Transform parent, string glyph, Vector2 position, int color)
         {
@@ -217,6 +222,7 @@ namespace Pilgrimage.UI
         public void Select(Guid id)
         {
             if (!CanInteract || !handViews.Any(v => v.Card.InstanceId == id)) return;
+            if(SelectedCardId!=id)PilgrimageAudio.Instance?.Play("ui_hover",.6f,.09f);
             SelectedCardId = id;
             ApplySelection();
         }
@@ -252,6 +258,7 @@ namespace Pilgrimage.UI
             if (view == null) { Feedback("먼저 카드를 선택하세요."); return; }
             CardDefinition def = view.Card.Definition;
             if (IsLanMode) { LanDetail(view.Card); return; }
+            PilgrimageAudio.Instance?.Play("card_flip");
             string detail = CardPresentation.Detail(def);
             if (def.Id == CardId.RefusingFollower) detail += "\n\n변환까지 남은 정산: " + Game.RefusingTurns(view.Card.InstanceId);
             if (def.Id == CardId.HeresyJudgment) detail += "\n\n현재 누적 사용: " + Game.Players[0].JudgmentUses + " · 현재 헌금 비용: " + Game.EffectiveCost(0, view.Card, new EffectTarget { PlayerIndex = targetPlayer });
@@ -264,7 +271,8 @@ namespace Pilgrimage.UI
             debugButton.gameObject.SetActive(false); manualAiButton.gameObject.SetActive(false);
             text = CardPresentation.PlayerText(text);
             detailText.text = text;
-            detailText.rectTransform.sizeDelta = new Vector2(1090, Mathf.Max(700, detailText.GetPreferredValues(text, 1090, 0).y + 25));
+            float width = detailText.rectTransform.sizeDelta.x;
+            detailText.rectTransform.sizeDelta = new Vector2(width, Mathf.Max(700, detailText.GetPreferredValues(text, width, 0).y + 25));
             var content = (RectTransform)detailText.transform.parent;
             content.sizeDelta = new Vector2(0, detailText.rectTransform.sizeDelta.y + 20);
             content.anchoredPosition = Vector2.zero;
@@ -320,6 +328,7 @@ namespace Pilgrimage.UI
             if (IsLanMode) { RefreshLanGame(); return; }
             Visuals.TimeScale = VisualScale; Visuals.Submit(Game.VisualEvents);
             if (Game == null) return;
+            PilgrimageAudio.Instance?.Observe(Game.Round,Game.ActivePlayerIndex,Game.Phase,Game.Winners.Contains(0));
             for (int i = 0; i < 4; i++)
             {
                 PlayerState p = Game.Players[i];
@@ -327,18 +336,20 @@ namespace Pilgrimage.UI
                 playerLabels[i].text = marker + p.Name;
                 if (i > 0)
                 {
-                    opponentStats[i - 1, 0].text = p.FollowerCount.ToString();
-                    opponentStats[i - 1, 1].text = p.Offering.ToString();
-                    opponentStats[i - 1, 2].text = p.Hand.Count.ToString();
+                    opponentStats[(i - 1) * 4].text = p.Hand.Count.ToString();
+                    opponentStats[(i - 1) * 4 + 1].text = p.Faith.ToString();
+                    opponentStats[(i - 1) * 4 + 2].text = p.Offering.ToString();
+                    opponentStats[(i - 1) * 4 + 3].text = p.Doctrine.ToString();
                 }
                 else
                 {
-                    int[] values = { p.Offering, p.Faith, p.Doctrine, p.FollowerCount };
+                    int[] values = { p.Hand.Count, p.Faith, p.Offering, p.Doctrine };
                     for (int stat = 0; stat < 4; stat++) ownStats[stat].text = values[stat].ToString();
                 }
-                if (i > 0) RefreshBacks(i);
+                UpdatePlayerPortrait(i,p.Faction);
             }
-            roundText.text = $"ROUND {Game.Round:00} / 40     무신론자 {Game.Atheists}";
+            roundText.text = Game.Round.ToString();
+            if(atheistsText!=null)atheistsText.text = "무신론자 " + Game.Atheists;
             activeText.text = Game.Phase == GamePhase.Actions ? Game.Players[Game.ActivePlayerIndex].Name + (Game.ActivePlayerIndex == 0 ? "\n내 차례" : "\nAI 차례") : Game.Phase == GamePhase.RewardChoice ? "카드 획득 결과" : "승리\n" + string.Join(" · ", Game.Winners.Select(i => Game.Players[i].Name));
             activeText.enableAutoSizing = true; activeText.fontSizeMin = 14; activeText.fontSizeMax = 26;
             if (Game.Phase == GamePhase.Finished) messageText.text = "최다 신도 " + Game.Players.Max(p => p.FollowerCount) + "명\n전체 인원 " + Game.PopulationTotal + "명";
@@ -348,8 +359,8 @@ namespace Pilgrimage.UI
             handViews.Clear();
             for (int i = 0; i < Game.Players[0].Hand.Count; i++)
             {
-                RectTransform card = Panel(handRoot, "My Card " + i, Vector2.zero, new Vector2(200, 280), Color.black);
-                CardView view = card.gameObject.AddComponent<CardView>();
+                CardView view = Instantiate(cardPrefab, handRoot, false);
+                view.name = "My Card " + i;
                 view.Bind(this, Game.Players[0].Hand[i], i, 1300);
                 handViews.Add(view);
             }
@@ -368,18 +379,16 @@ namespace Pilgrimage.UI
             {
                 // Only count/index enters this UI. No hidden CardInstance or definition is bound.
                 float spacing = count <= 1 ? 0 : Mathf.Min(56, (area.sizeDelta.x - 65) / (count - 1));
-                RectTransform back = Panel(area, "Private Card Back", new Vector2((i - (count - 1) / 2f) * spacing, 0), new Vector2(62, 82), new Color(0.3f, 0.32f, 0.35f));
-                back.GetComponent<Image>().raycastTarget = false;
-                var outline = back.gameObject.AddComponent<Outline>();
-                outline.effectColor = new Color(0.7f, 0.72f, 0.74f); outline.effectDistance = new Vector2(1.5f, -1.5f);
+                var back = Instantiate(cardBackPrefab, area, false);
+                back.name = "Private Card Back";
+                back.anchoredPosition = new Vector2((i - (count - 1) / 2f) * spacing, 0);
                 if (settings != null && settings.cardBack != null) back.GetComponent<Image>().sprite = settings.cardBack;
-                else Text(back, "Back Symbol", "?", Vector2.zero, new Vector2(54, 70), 30);
             }
         }
 
         private void BuildRewards()
         {
-            foreach (Transform child in rewardRoot) { child.gameObject.SetActive(false); Destroy(child.gameObject); }
+            ClearChildren(rewardRoot);
             rewardRoot.gameObject.SetActive(Game.Phase == GamePhase.RewardChoice && (Game.RewardPlayerIndex == 0 || !aiSettings.autoPlay));
             if (!rewardRoot.gameObject.activeSelf) return;
             rewardRoot.SetAsLastSibling();
@@ -459,11 +468,12 @@ namespace Pilgrimage.UI
         private void Reveal(CardDefinition definition, bool ai, Guid instanceId)
         {
             if (definition == null) return;
+            if (submittedCardView != null) submittedCardView.BindPublic(this, definition);
             RevealedAiCard = ai ? definition : null;
             RevealedCardInstanceId = instanceId;
             revealedCard.gameObject.SetActive(true);
             revealedCard.anchoredPosition = new Vector2(0, 6); revealedCard.localScale = Vector3.one;
-            revealedCard.GetComponent<Image>().color = CardView.CategoryColor(definition.Category);
+
             revealedNumber.text = $"#{(int)definition.Id + 1:00}"; revealedName.text = definition.Name;
         }
         private void ShowResult(int actor, int offering, int followers, int faith, int doctrine)
@@ -522,25 +532,43 @@ namespace Pilgrimage.UI
             switch (category) { case CardCategory.Follower: return settings.followerCardFrame; case CardCategory.Heretic: return settings.hereticCardFrame; case CardCategory.Faction: return settings.factionCardFrame; default: return settings.generalCardFrame; }
         }
         private static void Stretch(RectTransform rect) { rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero; }
-        private static RectTransform Rect(Transform parent, string name, Vector2 position, Vector2 size)
+        private RectTransform Rect(Transform parent, string name, Vector2 position, Vector2 size)
         {
+            if (!buildingSceneUI)
+            {
+                foreach (Transform child in parent)
+                    if (child.name == name && !child.gameObject.activeSelf) { child.gameObject.SetActive(true); return (RectTransform)child; }
+                foreach (Transform child in parent)
+                    if (child.name == name) return (RectTransform)child;
+                throw new InvalidOperationException("Missing authored UI: " + parent.name + "/" + name);
+            }
             var obj = new GameObject(name, typeof(RectTransform)); obj.transform.SetParent(parent, false);
             var rect = (RectTransform)obj.transform; rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f); rect.sizeDelta = size; rect.anchoredPosition = position;
             return rect;
         }
         public RectTransform Panel(Transform parent, string name, Vector2 position, Vector2 size, Color color)
-        { RectTransform rect = Rect(parent, name, position, size); rect.gameObject.AddComponent<Image>().color = color; return rect; }
+        { RectTransform rect = Rect(parent, name, position, size); if (buildingSceneUI)
+            {
+                rect.gameObject.AddComponent<Image>().color = color.a == 0 ? Color.clear : Color.white;
+                if (color.a > 0 && size.x > 0 && size.y > 0)
+                {
+                    var outline = rect.gameObject.AddComponent<Outline>();
+                    outline.effectColor = new Color(.65f,.65f,.65f); outline.effectDistance = new Vector2(1,-1);
+                }
+            } return rect; }
         public TMP_Text Text(Transform parent, string name, string value, Vector2 position, Vector2 size, float fontSize, TextAlignmentOptions alignment = TextAlignmentOptions.Center)
         {
             RectTransform rect = Rect(parent, name, position, size);
+            if (!buildingSceneUI) { var existing = rect.GetComponent<TMP_Text>(); existing.text = value; return existing; }
             var text = rect.gameObject.AddComponent<TextMeshProUGUI>();
-            text.font = font; text.text = value; text.fontSize = fontSize; text.alignment = alignment; text.color = new Color(0.91f, 0.94f, 0.92f);
+            text.font = font; text.text = value; text.fontSize = fontSize; text.alignment = alignment; text.color = new Color(0.08f, 0.08f, 0.08f);
             text.raycastTarget = false; text.textWrappingMode = TextWrappingModes.Normal; text.overflowMode = TextOverflowModes.Overflow;
             return text;
         }
         private Button Button(Transform parent, string label, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction action)
         {
             RectTransform rect = Panel(parent, label, position, size, new Color(0.13f, 0.3f, 0.31f));
+            if (!buildingSceneUI) { var existing = rect.GetComponent<Button>(); existing.interactable = true; existing.onClick.RemoveAllListeners(); existing.onClick.AddListener(action); return existing; }
             var button = rect.gameObject.AddComponent<Button>(); button.targetGraphic = rect.GetComponent<Image>();
             button.navigation = new Navigation { mode = Navigation.Mode.None };
             ColorBlock colors = button.colors; colors.highlightedColor = new Color(0.7f, 1, 0.85f); colors.pressedColor = new Color(0.45f, 0.8f, 0.65f); button.colors = colors;

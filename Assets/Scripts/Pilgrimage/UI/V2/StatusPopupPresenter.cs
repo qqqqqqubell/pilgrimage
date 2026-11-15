@@ -13,7 +13,10 @@ namespace Pilgrimage.UI
         public int ShownCount {get;private set;}
         public readonly List<string> RecentTexts=new List<string>();
         private DemoController owner;private RectTransform root;private Func<int,Vector2> anchor;
-        public void Initialize(DemoController controller,RectTransform parent,Func<int,Vector2> locate){owner=controller;root=parent;anchor=locate;}
+        public void Initialize(DemoController controller,RectTransform parent,Func<int,Vector2> locate){owner=controller;root=parent;anchor=locate;pool.Clear();
+            if(controller.IsAuthoringUI) for(int i=0;i<96;i++){var element=owner.Text(root,"Status Popup", "상태 변화",Vector2.zero,new Vector2(390,40),25);element.raycastTarget=false;element.gameObject.SetActive(false);}
+            foreach(Transform child in root) if(child.name=="Status Popup"){var element=child.GetComponent<TMP_Text>();pool.Add(new Slot{text=element});element.gameObject.SetActive(false);}
+        }
         public static string Label(StatusDelta d)
         {
             string sign=d.amount.ToString("+#;-#;0");
@@ -27,12 +30,12 @@ namespace Pilgrimage.UI
         public void Show(GameVisualEvent e,float scale=1)
         {
             string prefix=e.cause==VisualCause.Card?"":e.cause==VisualCause.NaturalDecay?"자연 감소 · ":e.cause==VisualCause.RoundIncome?"수입 · ":e.cause==VisualCause.RoundDraw?"라운드 · ":e.cause==VisualCause.Reward?"보상 · ":e.cause==VisualCause.Delayed?"지연 효과 · ":e.cause==VisualCause.Threshold?"임계값 · ":e.cause==VisualCause.Duration?"기간 · ":"턴 종료 · ";
-            foreach(var delta in e.changes){var s=pool.Find(p=>!p.active);if(s==null){s=new Slot{text=owner.Text(root,"Status Popup", "",Vector2.zero,new Vector2(390,40),25)};s.text.fontStyle=FontStyles.Bold;s.text.gameObject.AddComponent<UnityEngine.UI.Shadow>().effectDistance=new Vector2(1,-2);pool.Add(s);}
+            foreach(var delta in e.changes){var s=pool.Find(p=>!p.active);if(s==null){s=pool[0];s.active=false;}
                 int row=0;while(pool.Exists(p=>p.active&&p.seat==delta.player&&p.row==row))row++;
                 s.seat=delta.player;s.row=row;s.origin=anchor(delta.player)+new Vector2((row/6)*210-100,(row%6)*32);
                 s.start=Time.unscaledTime;s.duration=Mathf.Max(.04f,.8f*scale);s.active=true;s.text.gameObject.SetActive(true);
                 s.text.text=prefix+Label(delta);bool bad=delta.amount<0||delta.kind==StatusKind.HereticConversion||delta.kind==StatusKind.RefusingConversion;
-                s.text.color=delta.kind==StatusKind.Defense?new Color(.35f,.75f,1):bad?new Color(1,.28f,.23f):delta.kind==StatusKind.Offering||delta.kind==StatusKind.Property?new Color(1,.86f,.25f):new Color(.4f,1,.58f);
+                s.text.color=Color.black;
                 ShownCount++;RecentTexts.Add(s.text.text);if(RecentTexts.Count>64)RecentTexts.RemoveAt(0);
             }
         }

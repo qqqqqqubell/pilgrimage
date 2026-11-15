@@ -6,14 +6,14 @@
 
 ![1920×1080 데모 렌더링](Images/PilgrimageDemo.png)
 
-## 데모 실행 — 수동 UI 제작 없음
+## 데모 실행 — 씬 UI 편집 가능
 
 1. Unity에서 컴파일/에셋 가져오기가 끝날 때까지 기다립니다.
 2. 상단 **Pilgrimage → v2 데모 열기**를 선택합니다. 또는 Project 창의 `Assets/Scenes/PilgrimageDemo.unity`를 더블클릭합니다.
 3. **▶ Play**를 누르고 **Game** 탭에서 교단을 선택합니다. 1920×1080 또는 16:9 비율을 권장합니다. 시작 헌금 5, 기본 손패 4장입니다. 교단 선택 전에는 게임이 시작되지 않습니다.
-4. 실행 시 Canvas, TextMeshPro 텍스트, EventSystem, 입력 액션, 카드/상태 패널이 자동 생성됩니다. Scene 편집 상태에는 데모 루트만 보이는 것이 정상입니다.
+4. Canvas, TextMeshPro 텍스트, EventSystem, 카드/상태 패널은 씬에 저장되어 Play 전부터 편집할 수 있습니다. 카드는 프리팹으로 관리합니다. [씬 UI 편집 안내](SceneUI.ko.md)를 참고하세요.
 
-기존 `SampleScene`과 v1 IMGUI 화면은 보존했습니다. 빌드 장면 목록도 변경하지 않았습니다. 실행 파일로 데모를 빌드하려면 Build Profiles의 Scene List에 **PilgrimageDemo**를 직접 추가하세요.
+`SampleScene`도 같은 Canvas UI로 전환했으며, 빌드 장면 목록에 `PilgrimageDemo`와 `SampleScene`이 포함됩니다.
 
 ### 조작
 

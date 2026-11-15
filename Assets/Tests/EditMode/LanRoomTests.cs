@@ -82,7 +82,7 @@ namespace Pilgrimage.Tests
             Assert.That(Send(r,1,LanCommandKind.Play,out _,id,target:0),Is.True);
             Assert.That(r.Busy,Is.True);Assert.That(r.Game.Players[1].Offering,Is.EqualTo(8));
             Assert.That(Send(r,1,LanCommandKind.Play,out _,id),Is.False);
-            Assert.That(r.CompletePlay(out _),Is.True);Assert.That(r.Game.Players[1].Offering,Is.Zero);
+            Assert.That(r.CompletePlay(out _),Is.True);Assert.That(r.Game.Players[1].Offering,Is.EqualTo(3));
             Assert.That(r.CompletePlay(out _),Is.False);Assert.That(Send(r,1,LanCommandKind.EndTurn,out _),Is.False);
             r.FinishReveal();Assert.That(r.Busy,Is.False);Assert.That(Send(r,1,LanCommandKind.Play,out _,id),Is.False);
             Assert.That(r.Game.FindCard(card.InstanceId).Pile,Is.EqualTo(CardPile.Discard));Assert.That(r.Game.Atheists,Is.EqualTo(98));

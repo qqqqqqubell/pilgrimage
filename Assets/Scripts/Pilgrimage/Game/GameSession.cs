@@ -184,8 +184,6 @@ namespace Pilgrimage
                 return Fail("유효한 대상 교단을 지정하세요.", out reason);
             if (def.Target == TargetKind.Player && !AllowSelfAsOpponentTarget && target.PlayerIndex == actor)
                 return Fail("현재 임시 설정에서는 다른 교단을 지정해야 합니다.", out reason);
-            if ((def.Id == CardId.AggressiveMission || def.Id == CardId.PoorRelief) && players[actor].Faith <= 20)
-                return Fail("신앙심 20 이하에서는 사용할 수 없습니다.", out reason);
             if (def.Id == CardId.Interest && interestUsed.Contains(actor)) return Fail("이자는 한 턴에 한 장만 사용할 수 있습니다.", out reason);
             int cost = EffectiveCost(actor, card, target);
             if (cost < 0) return Fail("현재 사용할 수 없는 카드입니다.", out reason);
@@ -236,7 +234,7 @@ namespace Pilgrimage
             BeginVisual(VisualCause.TurnEnd, actor);
             foreach (CardInstance ignored in player.Hand.Where(c => c.Definition.Id == CardId.Heretic).ToArray())
             {
-                foreach (var follower in SessionCardEffects.EligibleFollowers(player.Deck).Take(player.Doctrine <= 30 ? 2 : 1).ToArray())
+                foreach (var follower in SessionCardEffects.EligibleFollowers(player.Deck).Take(1).ToArray())
                     Transform(follower.InstanceId, CardCatalog.Get(CardId.Heretic));
             }
             // Duration counts completed owner action turns, including the turn granted.

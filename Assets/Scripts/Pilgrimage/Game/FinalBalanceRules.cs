@@ -51,10 +51,9 @@ namespace Pilgrimage
         private int CostFor(CardDefinition def, int actor, int target, CardInstance source)
         {
             if (def.CostKind == CardCostKind.None || def.CostKind == CardCostKind.MissingSpecification) return -1;
-            int cost = def.Id == CardId.HeresyJudgment ? 5 + JudgmentCount(actor, source) * 5 : def.Cost;
+            int cost = def.Id == CardId.HeresyJudgment ? 3 + JudgmentCount(actor, source) : def.Cost;
             if (def.Id == CardId.AggressiveMission)
             { if (target < 0 || target >= PlayerCount) return -1; cost = players[target].Faith <= 30 ? 3 : 5; }
-            if ((def.Id == CardId.AggressiveMission || def.Id == CardId.PoorRelief) && players[actor].Faith <= 30) cost++;
             return cost;
         }
         public IReadOnlyList<CardDefinition> EligibleRewards(int owner, RewardKind kind)

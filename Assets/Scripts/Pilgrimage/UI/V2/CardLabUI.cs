@@ -15,15 +15,16 @@ namespace Pilgrimage.UI
         public bool IsCardPickerOpen => cardPicker != null && cardPicker.gameObject.activeSelf;
         private GameSession savedRegularGame;
         private string[] savedRegularLogs;
-        private RectTransform labPanel, libraryContent, cardPicker, pickerContent;
-        private TMP_InputField labSearch, offeringInput, faithInput, doctrineInput;
-        private TMP_Text labStatus, labPlayerLabel, labBadge;
+        [SerializeField] private RectTransform labPanel, libraryContent, cardPicker, pickerContent;
+        [SerializeField] private TMP_InputField labSearch, offeringInput, faithInput, doctrineInput;
+        [SerializeField] private TMP_Text labStatus, labPlayerLabel, labBadge;
         private readonly List<CardId> labFive = new List<CardId>();
         private int labPlayer = 1;
         private Guid? pendingRemovalSource;
         private readonly HashSet<Guid> pendingCardTargets = new HashSet<Guid>();
-        private TMP_Text pickerTitle;
+        [SerializeField] private TMP_Text pickerTitle;
 
+#if UNITY_EDITOR
         private void BuildCardLabUI()
         {
             if (DevelopmentToolsAvailable)
@@ -67,6 +68,7 @@ namespace Pilgrimage.UI
             Button(cardPicker, "취소 · ESC", new Vector2(220, -405), new Vector2(340, 50), CloseCardPicker);
             cardPicker.gameObject.SetActive(false);
         }
+#endif
 
         public void EnterCardLab()
         {
@@ -115,7 +117,7 @@ namespace Pilgrimage.UI
             ClearChildren(libraryContent);
             string query = labSearch.text.Trim();
             var cards = Game.Catalog.Where(c => c.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0).OrderBy(c => (int)c.Id).ToArray();
-            libraryContent.sizeDelta = new Vector2(1040, Mathf.Max(520, cards.Length * 90));
+            libraryContent.sizeDelta = new Vector2(libraryContent.sizeDelta.x, Mathf.Max(520, cards.Length * 90));
             for (int i = 0; i < cards.Length; i++)
             {
                 CardDefinition card = cards[i]; float y = -45 - i * 90;
@@ -136,9 +138,8 @@ namespace Pilgrimage.UI
                 string cost = card.CostKind == CardCostKind.None ? "코스트 없음" : CardPresentation.CostLabel(card);
                 if (card.CostKind == CardCostKind.Variable) cost += " (현재 대상 " + Game.EffectiveCost(card, targetPlayer) + ")";
                 var text = Text(libraryContent, "Card Lab Entry", card.Name + " · " + cost + "\n" + status, new Vector2(-190, y), new Vector2(620, 78), 19);
-                AnchorTop(text.rectTransform);
-                Button add = Button(libraryContent, "손패 +1", new Vector2(210, y), new Vector2(160, 60), () => { GameDebugTools.GiveCard(Game, 0, card.Id); Refresh(); }); AnchorTop((RectTransform)add.transform);
-                Button queue = Button(libraryContent, "5장 선택", new Vector2(410, y), new Vector2(170, 60), () => { if (labFive.Count == 5) labFive.Clear(); labFive.Add(card.Id); RefreshLabLibrary(); }); AnchorTop((RectTransform)queue.transform);
+                Button add = Button(libraryContent, "손패 +1", new Vector2(210, y), new Vector2(160, 60), () => { GameDebugTools.GiveCard(Game, 0, card.Id); Refresh(); });
+                Button queue = Button(libraryContent, "5장 선택", new Vector2(410, y), new Vector2(170, 60), () => { if (labFive.Count == 5) labFive.Clear(); labFive.Add(card.Id); RefreshLabLibrary(); });
             }
             labStatus.text = "편집할 5장: " + (labFive.Count == 0 ? "(없음)" : string.Join(" / ", labFive.Select(id => CardCatalog.Get(id).Name))) +
                 $"\n내 손패 {Game.Players[0].Hand.Count} · 덱 {Game.Players[0].Deck.Count} · 버린 더미 {Game.Players[0].Discard.Count} · 제거 {Game.Players[0].Removed.Count}\n필드로 닫은 뒤 기존 마우스/키보드 조작으로 사용하세요. AI 자동 진행은 실험 세션에서 정지합니다.";
@@ -189,10 +190,10 @@ namespace Pilgrimage.UI
             {
                 CardInstance candidate = candidates[i]; var located = Game.FindCard(candidate.InstanceId);
                 Button choice = null;
-                choice = Button(pickerContent, candidate.Definition.Name + " · " + located.Pile + " · " + candidate.InstanceId.ToString("N").Substring(0, 8),
+                choice = CardChoice(pickerContent, candidate.Definition.Name + " · " + located.Pile + " · " + candidate.InstanceId.ToString("N").Substring(0, 8),
                     new Vector2(0, -35 - i * 70), new Vector2(1300, 60), () => {
                         ToggleCardTarget(candidate.InstanceId);
-                        choice.GetComponent<Image>().color = pendingCardTargets.Contains(candidate.InstanceId) ? new Color(0.2f, 0.5f, 0.38f) : new Color(0.13f, 0.3f, 0.31f);
+                        choice.GetComponent<Image>().color = pendingCardTargets.Contains(candidate.InstanceId) ? new Color(0.75f, 0.85f, 0.75f) : Color.white;
                     });
                 AnchorTop((RectTransform)choice.transform);
             }
@@ -230,6 +231,7 @@ namespace Pilgrimage.UI
             var input = box.gameObject.AddComponent<TMP_InputField>(); input.textViewport = box; input.textComponent = label; input.placeholder = placeholder;
             input.navigation = new Navigation { mode = Navigation.Mode.None }; return input;
         }
+#if UNITY_EDITOR
         private void CreateScroll(Transform parent, string name, Vector2 position, Vector2 size, out RectTransform content)
         {
             var viewport = Panel(parent, name, position, size, Color.clear); viewport.gameObject.AddComponent<RectMask2D>();
@@ -237,7 +239,16 @@ namespace Pilgrimage.UI
             content = Rect(viewport, "Content", Vector2.zero, size); AnchorTop(content); content.pivot = new Vector2(0.5f, 1); content.anchoredPosition = Vector2.zero;
             scroll.viewport = viewport; scroll.content = content;
         }
+#endif
         private static void AnchorTop(RectTransform rect) { rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1); }
-        private static void ClearChildren(Transform parent) { foreach (Transform child in parent) { child.gameObject.SetActive(false); UnityEngine.Object.Destroy(child.gameObject); } }
+        private static void ClearChildren(Transform parent)
+        {
+            foreach (Transform child in parent)
+            {
+                bool card = child.GetComponent<CardView>() != null || child.GetComponent<SceneCardChoice>() != null || child.name == "Private Card Back";
+                if (card || child.GetComponent<SceneUIRefreshSlot>() != null) child.gameObject.SetActive(false);
+                if (card) UnityEngine.Object.Destroy(child.gameObject);
+            }
+        }
     }
 }

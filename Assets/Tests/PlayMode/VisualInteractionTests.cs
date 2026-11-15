@@ -11,16 +11,20 @@ namespace Pilgrimage.Tests
     public sealed class VisualInteractionTests
     {
         private DemoController demo;
-        [UnitySetUp]public IEnumerator Setup(){demo=new GameObject("Visual Test").AddComponent<DemoController>();yield return null;demo.SelectSinglePlayer();demo.ChooseFaction(FactionId.Poverty);demo.AiConfiguration.autoPlay=false;yield return null;}
+        [UnitySetUp]public IEnumerator Setup(){yield return SceneUITestFactory.Load(value=>demo=value);yield return null;demo.SelectSinglePlayer();demo.ChooseFaction(FactionId.Poverty);demo.AiConfiguration.autoPlay=false;yield return null;}
         [UnityTearDown]public IEnumerator Cleanup(){if(demo!=null)Object.Destroy(demo.gameObject);yield return null;}
         private IEnumerator Idle(){float end=Time.realtimeSinceStartup+6;do{yield return null;}while((demo.IsAnimating||demo.Visuals.IsBusy)&&Time.realtimeSinceStartup<end);Assert.That(demo.IsAnimating||demo.Visuals.IsBusy,Is.False);}
-        [UnityTest]public IEnumerator BackgroundCoversCanvasWithoutRaycastsAndAllSheetsHaveCorrectFrames()
+        [UnityTest]public IEnumerator AuthoredPlaceholdersRemainEditableAndNeverSpawnAnotherCanvas()
         {
-            var a=demo.VisualAssets;Assert.That(a,Is.Not.Null);Assert.That(a.background.rect.size,Is.EqualTo(new Vector2(1920,1080)));
-            foreach(var sheet in new[]{a.cutInBackground,a.cutInMask,a.cutInForeground}){Assert.That(sheet.Length,Is.EqualTo(24));Assert.That(sheet.All(s=>s.rect.size==new Vector2(960,540)),Is.True);Assert.That(sheet[0].rect.y,Is.GreaterThan(sheet[23].rect.y));}
-            Assert.That(a.hit1.Length,Is.EqualTo(16));Assert.That(a.hit2.Length,Is.EqualTo(16));Assert.That(a.coins.Length,Is.EqualTo(64));Assert.That(a.explosion1.Length,Is.EqualTo(64));Assert.That(a.explosion1[0].rect.width,Is.EqualTo(256));
-            var art=demo.GetComponentsInChildren<Image>(true).Single(i=>i.name=="Red Table Background");Assert.That(art.raycastTarget,Is.False);Assert.That(art.GetComponent<AspectRatioFitter>().aspectMode,Is.EqualTo(AspectRatioFitter.AspectMode.EnvelopeParent));
-            yield return null;Assert.That(art.rectTransform.rect.width/art.rectTransform.rect.height,Is.EqualTo(16f/9).Within(.001));
+            Assert.That(demo.VisualAssets,Is.Null);
+            var background=demo.GetComponentsInChildren<Image>(true).Single(i=>i.name=="Background");
+            Assert.That(background.sprite,Is.Null);Assert.That(background.color,Is.EqualTo(Color.white));
+            Assert.That(background.raycastTarget,Is.False);
+            Assert.That(demo.GetComponentsInChildren<Canvas>(true).Length,Is.EqualTo(1));
+            var table=demo.transform.GetComponentsInChildren<RectTransform>(true).Single(r=>r.name=="Shared Table");
+            table.anchoredPosition+=new Vector2(17,23);var authored=table.anchoredPosition;
+            demo.SendMessage("Refresh");yield return null;
+            Assert.That(table.anchoredPosition,Is.EqualTo(authored));
             Assert.That(demo.GetComponentsInChildren<Button>().Single(b=>b.name=="행동 종료").targetGraphic.raycastTarget,Is.True);
         }
         [UnityTest]public IEnumerator FourPortraitTimelinesPlayOnceWithoutMutatingGameOrTimeScale()
@@ -28,7 +32,7 @@ namespace Pilgrimage.Tests
             float scale=Time.timeScale;var cut=demo.Visuals.CutIn;int flashes=0,exits=0;cut.Flash+=()=>flashes++;cut.ExitStarted+=()=>exits++;
             foreach(var id in new[]{CardId.HumbleTemple,CardId.Indulgence,CardId.Archbishop,CardId.WildRoar}){
                 int money=demo.Game.Players[0].Offering;int count=cut.PlayCount;var c=CardCatalog.Get(id);
-                Assert.That(demo.VisualAssets.Portrait(c.Faction),Is.Not.Null);yield return cut.Play(c);
+                yield return cut.Play(c);
                 Assert.That(cut.PlayCount,Is.EqualTo(count+1));Assert.That(cut.IsPlaying,Is.False);Assert.That(demo.Game.Players[0].Offering,Is.EqualTo(money));Assert.That(Time.timeScale,Is.EqualTo(scale));
             }
             Assert.That(flashes,Is.EqualTo(4));Assert.That(exits,Is.EqualTo(4));int before=cut.PlayCount;
@@ -54,7 +58,7 @@ namespace Pilgrimage.Tests
             demo.Select(demo.Game.Players[0].Hand.Single().InstanceId);demo.PlaySelected();yield return Idle();int shown=pop.ShownCount,pool=pop.PoolSize;
             demo.Visuals.Submit(demo.Game.VisualEvents);demo.Visuals.Submit(demo.Game.VisualEvents);demo.SendMessage("Refresh");yield return null;
             Assert.That(pop.ShownCount,Is.EqualTo(shown));Assert.That(pop.PoolSize,Is.EqualTo(pool));Assert.That(demo.Visuals.CutIn,Is.SameAs(cut));Assert.That(demo.Visuals.Popups,Is.SameAs(pop));
-            Assert.That(pop.RecentTexts,Does.Contain("헌금 +2"));Assert.That(cut.PlayCount,Is.Zero);
+            Assert.That(pop.RecentTexts,Does.Contain("헌금 +5"));Assert.That(cut.PlayCount,Is.Zero);
         }
         [UnityTest]public IEnumerator ImpactClassificationUsesActualVictimsAndNeverTreatsRoundDecayAsAttack()
         {

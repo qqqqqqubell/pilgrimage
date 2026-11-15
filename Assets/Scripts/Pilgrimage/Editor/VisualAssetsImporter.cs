@@ -58,6 +58,12 @@ namespace Pilgrimage.Editor
             data.hit1=Frames("Sinestesia/Hit/hit_yellow_sheet.png");data.hit2=Frames("Sinestesia/Hit/hit2_yellow_sheet.png");
             data.explosion1=Frames("Sinestesia/Explosions/explosion_1_half.png");data.explosion2=Frames("Sinestesia/Explosions/explosion_2_half.png");data.coins=Frames("Sinestesia/Gold/gold_coins_sheet.png");
             data.cutInMetadata=AssetDatabase.LoadAssetAtPath<TextAsset>(Root+"CutIn/cutin_meta.json");
+            if(data.cutInBackground.Length!=24||data.cutInMask.Length!=24||data.cutInForeground.Length!=24||data.hit1.Length!=16||data.hit2.Length!=16||data.explosion1.Length!=64||data.explosion2.Length!=64||data.coins.Length!=64)
+            {
+                EditorJsonUtility.FromJsonOverwrite(previous,data);
+                if(create)UnityEngine.Object.DestroyImmediate(data);
+                EditorApplication.delayCall+=EnsureLibrary;return;
+            }
             if(create)AssetDatabase.CreateAsset(data,LibraryPath);
             if(create||previous!=EditorJsonUtility.ToJson(data)){EditorUtility.SetDirty(data);AssetDatabase.SaveAssets();}
             string prefabPath=Root+"Resources/PilgrimageGameplayVisuals.prefab";

@@ -51,12 +51,12 @@ namespace Pilgrimage.Tests
       id==CardId.HumbleTemple||id==CardId.TempleRemodeling||id==CardId.CaravanInvestment?2:0;
     for(int n=0;n<turns;n++) { demo.SendMessage("AdvanceLabTurn"); yield return null; }
     if(turns>0) Assert.That(p.TimedEffects,Is.Empty,id.ToString());
-    if(id==CardId.Penance) { Assert.That(p.Offering,Is.EqualTo(122)); Assert.That(p.Faith,Is.EqualTo(52)); }
+    if(id==CardId.Penance) { Assert.That(p.Offering,Is.EqualTo(127)); Assert.That(p.Faith,Is.EqualTo(52)); }
     if(id==CardId.HumbleTemple) Assert.That(p.Offering,Is.EqualTo(95));
-    if(id==CardId.TempleRemodeling) { Assert.That(p.Offering,Is.EqualTo(107)); Assert.That(p.ChurchProperty,Is.EqualTo(-2)); }
+    if(id==CardId.TempleRemodeling) { Assert.That(p.Offering,Is.EqualTo(110)); Assert.That(p.ChurchProperty,Is.EqualTo(-5)); }
     if(id==CardId.CaravanInvestment) Assert.That(p.Offering,Is.InRange(96,126));
     if(id==CardId.SolitaryReflection) Assert.That(p.Offering,Is.EqualTo(101));
-    if(id==CardId.InterfaithLoan) Assert.That(p.Offering,Is.EqualTo(123));
+    if(id==CardId.InterfaithLoan) Assert.That(p.Offering,Is.EqualTo(133));
     Assert.That(g.PopulationIsConserved,Is.True); Assert.That(demo.IsAiRunning,Is.False); demo.ExitCardLab();
    }
   }
@@ -67,7 +67,7 @@ namespace Pilgrimage.Tests
    demo.Select(source.InstanceId); demo.PlaySelected(); Assert.That(demo.IsCardPickerOpen,Is.True); demo.CloseCardPicker(); Assert.That(g.Players[0].Offering,Is.EqualTo(100));
    demo.PlaySelected(); demo.ToggleCardTarget(one.InstanceId); demo.ToggleCardTarget(two.InstanceId); demo.ConfirmCardTargets(); demo.ConfirmCardTargets();
    yield return new WaitForSecondsRealtime(.2f);
-   Assert.That(g.Players[0].Offering,Is.EqualTo(80)); Assert.That(g.Atheists,Is.EqualTo(102));
+   Assert.That(g.Players[0].Offering,Is.EqualTo(90)); Assert.That(g.Atheists,Is.EqualTo(102));
    Assert.That(g.FindCard(one.InstanceId).Pile,Is.EqualTo(CardPile.Removed)); Assert.That(g.FindCard(two.InstanceId).Pile,Is.EqualTo(CardPile.Removed));
    yield return new WaitForSecondsRealtime(.4f); Assert.That(demo.IsAnimating,Is.False); Assert.That(g.PopulationIsConserved,Is.True); demo.ExitCardLab();
   }
@@ -119,17 +119,17 @@ namespace Pilgrimage.Tests
   {
    SelectNewGame(FactionId.Fur); demo.EnterCardLab(); demo.SetLabHand(new[]{CardId.CallOfFur}); var g=demo.Game;
    demo.Select(g.Players[0].Hand.Single().InstanceId); Press(Key.Enter); yield return new WaitForSecondsRealtime(.4f);
-   var converts=g.Players[1].Hand.Concat(g.Players[1].Deck).Where(c=>c.Definition.Id==CardId.RefusingFollower).ToArray(); Assert.That(converts.Length,Is.EqualTo(5));
+   var converts=g.Players[1].Hand.Concat(g.Players[1].Deck).Where(c=>c.Definition.Id==CardId.RefusingFollower).ToArray(); Assert.That(converts.Length,Is.EqualTo(2));
    for(int n=0;n<3;n++) { demo.SendMessage("AdvanceLabTurn"); yield return null; }
    Assert.That(converts.All(c=>c.Definition.Id==CardId.FaithfulFollower&&g.FindCard(c.InstanceId).Owner==0),Is.True);
    demo.SetLabHand(new[]{CardId.HeresyJudgment,CardId.HeresyJudgment});
    GameDebugTools.SetResources(g,0,200,50,50); GameDebugTools.SetResources(g,1,100,50,50);
    for(int n=0;n<2;n++) {
     var card=g.Players[0].Hand.First(c=>c.Definition.Id==CardId.HeresyJudgment);
-    Assert.That(g.EffectiveCost(0,card,new EffectTarget{PlayerIndex=1}),Is.EqualTo(5+5*n));
+    Assert.That(g.EffectiveCost(0,card,new EffectTarget{PlayerIndex=1}),Is.EqualTo(3+n));
     demo.Select(card.InstanceId); Press(Key.Enter); yield return new WaitForSecondsRealtime(.4f);
    }
-   Assert.That(g.Players[0].JudgmentUses,Is.EqualTo(2)); Assert.That(g.Players[1].Doctrine,Is.EqualTo(35)); Assert.That(g.PopulationIsConserved,Is.True); demo.ExitCardLab();
+   Assert.That(g.Players[0].JudgmentUses,Is.EqualTo(2)); Assert.That(g.Players[1].Doctrine,Is.EqualTo(25)); Assert.That(g.PopulationIsConserved,Is.True); demo.ExitCardLab();
   }
   [UnityTest] public IEnumerator GoldHumanAndThreeActualAiPlayersFinishFortyRoundsWithPopulationConserved()
   {
