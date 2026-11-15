@@ -48,6 +48,11 @@ namespace Pilgrimage.UI
         private int targetPlayer = 1;
         private bool keyboardSelection;
         private GameObject ownedEventSystem;
+        private const float WheelScrollSensitivity = 20f; // 휠 1칸 ≈ 400px (기본값 1은 ≈20px). 속도를 바꾸려면 이 값을 조절하세요.
+        private readonly RectTransform[] firstBadges = new RectTransform[4];
+        private RectTransform resultPanel;
+        private TMP_Text resultTitle, resultDetail, resultButtonLabel;
+        private Button resultButton;
 
         private void Start()
         {
@@ -139,6 +144,12 @@ namespace Pilgrimage.UI
 
             rewardRoot = Panel(root, "Reward Selection", new Vector2(0, 80), new Vector2(1130, 510), new Color(0.085f, 0.14f, 0.19f));
             rewardRoot.gameObject.SetActive(false);
+            resultPanel = Panel(root, "Game Result", new Vector2(0, 98), new Vector2(700, 330), new Color(0.03f, 0.07f, 0.1f, 0.97f));
+            resultTitle = Text(resultPanel, "Result Title", "", new Vector2(0, 85), new Vector2(640, 120), 84);
+            resultDetail = Text(resultPanel, "Result Detail", "", new Vector2(0, -8), new Vector2(640, 80), 24);
+            resultButton = Button(resultPanel, "다시 시작", new Vector2(0, -105), new Vector2(300, 60), OnResultButton);
+            resultButtonLabel = resultButton.GetComponentInChildren<TMP_Text>();
+            resultPanel.gameObject.SetActive(false);
             modal = Panel(root, "Detail Overlay", Vector2.zero, Vector2.zero, new Color(0.005f, 0.012f, 0.02f, 0.96f));
             Stretch(modal);
             RectTransform detailPanel = Panel(modal, "Detail Face (not opponent back)", Vector2.zero, new Vector2(1240, 870), new Color(0.09f, 0.15f, 0.2f));
@@ -146,7 +157,7 @@ namespace Pilgrimage.UI
             viewport.gameObject.AddComponent<Image>().color = Color.clear;
             viewport.gameObject.AddComponent<RectMask2D>();
             var scroll = viewport.gameObject.AddComponent<ScrollRect>();
-            scroll.horizontal = false;
+            scroll.horizontal = false; scroll.scrollSensitivity = WheelScrollSensitivity;
             RectTransform content = Rect(viewport, "Content", Vector2.zero, new Vector2(1140, 720));
             content.anchorMin = new Vector2(0, 1); content.anchorMax = Vector2.one; content.pivot = new Vector2(0.5f, 1);
             content.anchoredPosition = Vector2.zero; content.sizeDelta = new Vector2(0, 720);
@@ -156,7 +167,7 @@ namespace Pilgrimage.UI
             scroll.content = content; scroll.viewport = viewport;
             Button(detailPanel, "닫기  ·  ESC / 우클릭", new Vector2(-270, -392), new Vector2(450, 48), CloseDetail);
             grantDebugButton = Button(detailPanel, "카드 실험", new Vector2(270, -392), new Vector2(270, 48), GrantAllForDebug);
-            debugButton = Button(detailPanel, "새 게임", new Vector2(215, -392), new Vector2(190, 48), () => { CloseDetail(); ResetGame(); });
+            debugButton = Button(detailPanel, "새 게임", new Vector2(215, -392), new Vector2(190, 48), () => { CloseDetail(); ReturnToModeSelection(); });
             manualAiButton = Button(detailPanel, "AI 수동 진행", new Vector2(440, -392), new Vector2(210, 48), () => { CloseDetail(); DebugOpponentStep(); });
             debugButton.gameObject.SetActive(false); manualAiButton.gameObject.SetActive(false);
             grantDebugButton.gameObject.SetActive(false);
@@ -174,6 +185,10 @@ namespace Pilgrimage.UI
                 for (int i = 0; i < 4; i++) ownStats[i] = StatChip(panel, glyphs[i], new Vector2(-155 + i * 180, 0), i);
             }
             else for (int i = 0; i < 3; i++) opponentStats[index - 1, i] = StatChip(panel, new[] { "人", "$", "패" }[i], new Vector2(-100 + i * 100, index == 1 ? 20 : 108), i);
+            firstBadges[index] = Panel(panel, "First Player Badge", new Vector2(-size.x / 2 + (index == 0 ? 34 : 24), index == 0 ? 0 : size.y / 2 - 24), new Vector2(40, 40), new Color(0.95f, 0.78f, 0.25f));
+            firstBadges[index].GetComponent<Image>().raycastTarget = false;
+            Text(firstBadges[index], "First Label", "선", Vector2.zero, new Vector2(38, 38), 24).color = new Color(0.12f, 0.08f, 0.02f);
+            firstBadges[index].gameObject.SetActive(false);
             Button(panel, index == 0 ? "내 추가 상태" : "상태", new Vector2(size.x / 2 - (index == 0 ? 100 : 48), -size.y / 2 + 23), new Vector2(index == 0 ? 170 : 80, 33), () => ShowPlayerStats(index));
             if (index > 0)
                 opponentHands[index - 1] = Rect(panel, "Private Hand Backs", new Vector2(0, index == 1 ? -47 : -26), new Vector2(size.x - 25, index == 1 ? 80 : 200));
@@ -338,8 +353,11 @@ namespace Pilgrimage.UI
                 }
                 if (i > 0) RefreshBacks(i);
             }
-            roundText.text = $"ROUND {Game.Round:00} / 40     무신론자 {Game.Atheists}";
-            activeText.text = Game.Phase == GamePhase.Actions ? Game.Players[Game.ActivePlayerIndex].Name + (Game.ActivePlayerIndex == 0 ? "\n내 차례" : "\nAI 차례") : Game.Phase == GamePhase.RewardChoice ? "카드 획득 결과" : "승리\n" + string.Join(" · ", Game.Winners.Select(i => Game.Players[i].Name));
+            bool finished = Game.Phase == GamePhase.Finished;
+            roundText.text = $"ROUND {Game.Round:00} / 40     무신론자 {Game.Atheists}" + (finished ? "" : "     선: " + Game.Players[Game.FirstPlayerIndex].Name);
+            UpdateFirstBadges(finished ? -1 : Game.FirstPlayerIndex);
+            UpdateResultPanel(finished, Game.Winners, 0, Game.Players.Select(p => p.Name).ToArray(), Game.Players.Select(p => p.FollowerCount).ToArray());
+            activeText.text = Game.Phase == GamePhase.Actions ? Game.Players[Game.ActivePlayerIndex].Name + (Game.ActivePlayerIndex == 0 ? "\n내 차례" : "\nAI 차례") : Game.Phase == GamePhase.RewardChoice ? "카드 획득 결과" : "우승\n" + string.Join(" · ", Game.Winners.Select(i => Game.Players[i].Name));
             activeText.enableAutoSizing = true; activeText.fontSizeMin = 14; activeText.fontSizeMax = 26;
             if (Game.Phase == GamePhase.Finished) messageText.text = "최다 신도 " + Game.Players.Max(p => p.FollowerCount) + "명\n전체 인원 " + Game.PopulationTotal + "명";
             if (Game.Phase == GamePhase.Actions && Game.ActivePlayerIndex == 0) targetLabel.text = Game.Players[targetPlayer].Name;
@@ -402,6 +420,8 @@ namespace Pilgrimage.UI
         {
             if (IsLanMode) { if (LanCanAct) Network.Send(new LanCommand { kind = LanCommandKind.EndTurn }); return; }
             if (!CanInteract || Game.ActivePlayerIndex != 0) return;
+            // 카드 실험실은 AI 자동 진행이 꺼져 있어, 일반 종료만 하면 AI 차례에서 멈춘다 → 다음 내 차례까지 수동 진행 도구로 넘긴다.
+            if (IsCardLab) { SelectedCardId = null; AdvanceLabTurn(); Log(Game.LastMessage); Refresh(); return; }
             Game.EndActionTurn(0); Log(Game.LastMessage); SelectedCardId = null; Refresh();
         }
 
@@ -481,10 +501,48 @@ namespace Pilgrimage.UI
         {
             if (IsLanMode) return;
             if (!CanInteract) return;
+            resultPanel.gameObject.SetActive(false);
             SelectedCardId = null; RevealedAiCard = null; RevealedCardInstanceId = null; revealedCard.gameObject.SetActive(false); logs.Clear(); logText.text = ""; messageText.text = "";
             if (IsCardLab) { Game = GameDebugTools.CreateCardLab(Game.HumanFaction); Refresh(); }
             else { rewardRoot.gameObject.SetActive(false); ShowFactionSelection(); }
         }
+        // 선플레이어(라운드 선) 표시: 해당 플레이어 패널 모서리에 금색 "선" 배지. relative = 화면상 위치(0=나)
+        private void UpdateFirstBadges(int relative)
+        {
+            for (int i = 0; i < firstBadges.Length; i++)
+                if (firstBadges[i] != null) firstBadges[i].gameObject.SetActive(i == relative);
+        }
+
+        // 게임 종료 시 화면 가운데에 승리/패배 + 다시 시작 버튼. 싱글: 교단 선택으로, LAN: 메뉴로 나가기.
+        private void UpdateResultPanel(bool finished, IReadOnlyList<int> winners, int local, string[] names, int[] followers)
+        {
+            if (resultPanel == null) return;
+            if (!finished || winners == null || local < 0) { resultPanel.gameObject.SetActive(false); return; }
+            bool won = winners.Contains(local);
+            resultTitle.text = won ? "승리" : "패배";
+            resultTitle.color = won ? new Color(1f, 0.85f, 0.3f) : new Color(0.9f, 0.4f, 0.4f);
+            string winnerNames = string.Join(" · ", winners.Select(i => names[i]));
+            resultDetail.text = (won ? (winners.Count > 1 ? "공동 1위 · " + winnerNames : "1위") : "우승: " + winnerNames) + "\n내 신도 " + followers[local] + "명";
+            resultButtonLabel.text = IsLanMode ? "메뉴로 나가기" : "다시 시작"; // 둘 다 모드 선택 화면으로 이동
+            resultPanel.gameObject.SetActive(true);
+        }
+
+        // 다시 시작 / 새 게임: 싱글·LAN 선택 화면으로 돌아간다. (LAN이면 방을 나간다)
+        private void ReturnToModeSelection()
+        {
+            if (IsLanMode) { LeaveLan(); return; }
+            if (IsAnimating || IsAiRunning) return;
+            if (IsCardLab) { IsCardLab = false; savedRegularGame = null; savedRegularLogs = null; if (labBadge != null) labBadge.gameObject.SetActive(false); }
+            logs.Clear(); logText.text = ""; messageText.text = "";
+            resultPanel.gameObject.SetActive(false);
+            ReturnFromLan("");
+        }
+
+        private void OnResultButton()
+        {
+            ReturnToModeSelection();
+        }
+
         private void CycleTarget() { if (!CanInteract) return; if (IsLanMode) { do { targetPlayer = (targetPlayer + 1) % 4; } while (targetPlayer == LocalSeat); targetLabel.text = LanView.players[targetPlayer].name; return; } targetPlayer = Game.AllowSelfAsOpponentTarget ? (targetPlayer + 1) % 4 : targetPlayer % 3 + 1; targetLabel.text = "효과 대상: " + Game.Players[targetPlayer].Name; }
         private void ShowPlayerStats(int index)
         {

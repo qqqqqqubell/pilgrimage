@@ -15,6 +15,7 @@ namespace Pilgrimage
         public int startingOffering = 5; // Retained for old assets; final regular games use StartingOffering.
         public int startingChurchProperty = 0;
         public int randomSeed = 20261114;
+        public bool randomFirstPlayer = false; // true: 1라운드 선플레이어를 무작위로 정한다(이후 라운드마다 한 칸씩 순환).
         public bool shuffleInitialDeck = true;
         public bool accumulateOfferingBetweenRounds = true;
         public int maxCardsPerActionTurn = 0; // 0: unlimited until explicit end.
@@ -23,6 +24,16 @@ namespace Pilgrimage
         public bool requireFullFollowerTargets = true;
         public bool allowSelfAsOpponentTarget = false;
         public TimedEffectPolicy timedEffects = new TimedEffectPolicy();
+
+        // 설정 에셋을 건드리지 않고 시드만 바꾼 복사본을 만든다. (새 필드를 추가하면 여기에도 복사 코드를 추가할 것)
+        public DemoRuleAssumptions WithRandomSeed(int seed) => new DemoRuleAssumptions
+        {
+            startingOffering = startingOffering, startingChurchProperty = startingChurchProperty, randomSeed = seed, randomFirstPlayer = randomFirstPlayer,
+            shuffleInitialDeck = shuffleInitialDeck, accumulateOfferingBetweenRounds = accumulateOfferingBetweenRounds,
+            maxCardsPerActionTurn = maxCardsPerActionTurn, rewardDestination = rewardDestination,
+            rejectWhenAtheistsInsufficient = rejectWhenAtheistsInsufficient, requireFullFollowerTargets = requireFullFollowerTargets,
+            allowSelfAsOpponentTarget = allowSelfAsOpponentTarget, timedEffects = timedEffects
+        };
     }
 
     public sealed class DeferredReward
@@ -103,7 +114,8 @@ namespace Pilgrimage
         public IReadOnlyList<DeferredReward> DeferredRewards { get; }
         public GamePhase Phase { get; private set; }
         public int Round { get; private set; } = 1;
-        public int FirstPlayerIndex => (Round - 1) % PlayerCount;
+        private readonly int startingSeat;
+        public int FirstPlayerIndex => (Round - 1 + startingSeat) % PlayerCount;
         public int ActivePlayerIndex => (FirstPlayerIndex + actionOffset) % PlayerCount;
         public int RewardPlayerIndex => 0; // All four rewards are already awarded; human acknowledges the results.
         public RewardKind CurrentRewardKind => Round % 8 == 0 ? RewardKind.Faction : RewardKind.General;
@@ -121,6 +133,7 @@ namespace Pilgrimage
             random = new Random(rules.randomSeed);
             effectRandom = new Random(rules.randomSeed ^ 0x51A7);
             rewardRandom = new Random(rules.randomSeed ^ 0x7E19);
+            startingSeat = rules.randomFirstPlayer ? new Random(rules.randomSeed ^ 0x3C6D).Next(PlayerCount) : 0;
             EffectPolicy = (rules.timedEffects ?? new TimedEffectPolicy()).Copy();
             IsNetworkGame = networkControlled;
             var seats = factionSeats == null ? FactionSetup.Seats(humanFaction) : factionSeats.ToArray();

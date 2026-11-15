@@ -120,15 +120,11 @@ namespace Pilgrimage.UI
         private void ReturnFromLan(string reason)
         {
             if (Network != null) { Network.Changed -= OnLanChanged; Network.Closed -= ReturnFromLan; Destroy(Network); Network = null; }
-<<<<<<< Updated upstream
             StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false; SetEndLabel("행동 종료");
-=======
-            StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false;
             Visuals.ResetSession();
             lanPresentations.Clear();lanResolved.Clear();lanPresentationRoutine=null;
->>>>>>> Stashed changes
             Game = null; LanView = null; IsLanMode = false; LanError = reason; SelectedCardId = null; displayedReveal = 0;
-            CloseCardPicker(); CloseDetail(); CloseLabPanel(); rewardRoot.gameObject.SetActive(false); revealedCard.gameObject.SetActive(false);
+            CloseCardPicker(); CloseDetail(); CloseLabPanel(); rewardRoot.gameObject.SetActive(false); resultPanel.gameObject.SetActive(false); revealedCard.gameObject.SetActive(false);
             RevealedCardInstanceId = null; RevealedAiCard = null;
             ClearChildren(handRoot); handViews.Clear(); leaveLanButton.gameObject.SetActive(false); kickStalledButton.gameObject.SetActive(false); kickConfirmUntil = 0;
             lanScreen.gameObject.SetActive(false); factionSelection.gameObject.SetActive(false); modeScreen.gameObject.SetActive(true); modeScreen.SetAsLastSibling();
@@ -200,8 +196,12 @@ namespace Pilgrimage.UI
                     RenderLanBacks(relative,p.handCount);
                 }
             }
-            roundText.text=$"ROUND {LanView.round:00} / 40     무신론자 {LanView.atheists}";
-            activeText.text=LanView.phase==GamePhase.Finished?"승리\n"+string.Join(" · ",LanView.winners.Select(i=>LanView.players[i].name)):LanView.phase==GamePhase.RewardChoice?"카드 획득 결과":LanView.players[LanView.activePlayer].name+(LanView.activePlayer==LocalSeat?"\n내 차례":LanView.players[LanView.activePlayer].ai?"\nAI 차례":"\n상대 차례");
+            bool lanFinished=LanView.phase==GamePhase.Finished;
+            int firstSeat=(LanView.round-1+4)%4;
+            roundText.text=$"ROUND {LanView.round:00} / 40     무신론자 {LanView.atheists}"+(lanFinished?"":"     선: "+LanView.players[firstSeat].name);
+            UpdateFirstBadges(lanFinished?-1:(firstSeat-LocalSeat+4)%4);
+            UpdateResultPanel(lanFinished,LanView.winners,LocalSeat,LanView.players.Select(p=>p.name).ToArray(),LanView.players.Select(p=>p.followers).ToArray());
+            activeText.text=LanView.phase==GamePhase.Finished?"우승\n"+string.Join(" · ",LanView.winners.Select(i=>LanView.players[i].name)):LanView.phase==GamePhase.RewardChoice?"카드 획득 결과":LanView.players[LanView.activePlayer].name+(LanView.activePlayer==LocalSeat?"\n내 차례":LanView.players[LanView.activePlayer].ai?"\nAI 차례":"\n상대 차례");
             activeText.enableAutoSizing=true; activeText.fontSizeMin=14;activeText.fontSizeMax=26;
             targetLabel.text=LanView.players[targetPlayer].name;
             UpdateLanEndButton();
@@ -323,11 +323,8 @@ namespace Pilgrimage.UI
                 float travel=Mathf.Max(.001f,reveal.travelSeconds);
                 for(float t=0;t<travel;t+=Time.unscaledDeltaTime){revealedCard.anchoredPosition=Vector2.Lerp(start,new Vector2(0,6),t/travel);revealedCard.localScale=Vector3.one*Mathf.Lerp(.45f,1,t/travel);yield return null;}
                 revealedCard.anchoredPosition=new Vector2(0,6);revealedCard.localScale=Vector3.one;
-<<<<<<< Updated upstream
-            } finally {IsAnimating=false;if(isActiveAndEnabled&&LanView!=null)UpdateLanEndButton();}
-=======
                 if(reveal.cutInSeconds>0&&(!reveal.completed||reveal.succeeded))Visuals.BeginCutIn(CardCatalog.Get(reveal.id),reveal.cutInSeconds/.8f);
-            } finally {if(isActiveAndEnabled&&LanView!=null)endButton.interactable=LanCanAct;}
+            } finally {if(isActiveAndEnabled&&LanView!=null)UpdateLanEndButton();}
         }
         private IEnumerator PresentLanQueue()
         {
@@ -342,7 +339,6 @@ namespace Pilgrimage.UI
                     lanResolved.Remove(reveal.serial);
                 }
             }finally{IsAnimating=false;lanPresentationRoutine=null;if(isActiveAndEnabled&&LanView!=null)RefreshLanGame();}
->>>>>>> Stashed changes
         }
         private void UpdateLanInput()
         {

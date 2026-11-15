@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Pilgrimage.UI
@@ -5,6 +6,7 @@ namespace Pilgrimage.UI
     public sealed partial class DemoController
     {
         private RectTransform factionSelection;
+        private bool randomizeNextGame; // 화면 버튼으로 시작할 때만 true: 매 게임 덱 순서·보상이 달라진다. (테스트가 ChooseFaction을 직접 부르면 기존 고정 시드)
         public bool IsFactionSelectionOpen => factionSelection != null && factionSelection.gameObject.activeSelf;
 
         private void BuildFactionSelection()
@@ -20,7 +22,7 @@ namespace Pilgrimage.UI
                 RectTransform panel = Panel(factionSelection, "Faction " + faction, position, new Vector2(740, 260), new Color(0.09f + i * 0.015f, 0.18f, 0.22f));
                 Text(panel, "Faction Name", FactionSetup.Name(faction), new Vector2(0, 75), new Vector2(690, 60), 31);
                 Text(panel, "Faction Description", FactionSetup.Description(faction), new Vector2(0, 0), new Vector2(680, 85), 24);
-                Button(panel, "선택 · " + FactionSetup.Name(faction), new Vector2(0, -85), new Vector2(620, 48), () => ChooseFaction(faction));
+                Button(panel, "선택 · " + FactionSetup.Name(faction), new Vector2(0, -85), new Vector2(620, 48), () => { randomizeNextGame = true; ChooseFaction(faction); });
             }
             Text(factionSelection, "Selection Note", "선택한 교단은 내가, 나머지 세 교단은 AI가 담당합니다.", new Vector2(0, -430), new Vector2(1600, 55), 23);
         }
@@ -28,7 +30,14 @@ namespace Pilgrimage.UI
         public bool ChooseFaction(FactionId faction)
         {
             if (IsLanMode || IsModeSelectionOpen || !IsFactionSelectionOpen || Game != null || !FactionSetup.IsPlayable(faction)) return false;
-            Game = new GameSession(settings != null ? settings.assumptions : null, humanFaction: faction);
+            DemoRuleAssumptions rules = settings != null ? settings.assumptions : null;
+            if (randomizeNextGame)
+            {
+                rules = (rules ?? new DemoRuleAssumptions()).WithRandomSeed(Guid.NewGuid().GetHashCode() & int.MaxValue);
+                rules.randomFirstPlayer = true; // 덱 순서·보상에 더해 시작 선플레이어도 매 게임 무작위
+            }
+            randomizeNextGame = false;
+            Game = new GameSession(rules, humanFaction: faction);
             Visuals.ResetSession();
             factionSelection.gameObject.SetActive(false);
             targetPlayer = 1;

@@ -233,7 +233,7 @@ namespace Pilgrimage.UI
         private void CreateScroll(Transform parent, string name, Vector2 position, Vector2 size, out RectTransform content)
         {
             var viewport = Panel(parent, name, position, size, Color.clear); viewport.gameObject.AddComponent<RectMask2D>();
-            var scroll = viewport.gameObject.AddComponent<ScrollRect>(); scroll.horizontal = false;
+            var scroll = viewport.gameObject.AddComponent<ScrollRect>(); scroll.horizontal = false; scroll.scrollSensitivity = WheelScrollSensitivity;
             content = Rect(viewport, "Content", Vector2.zero, size); AnchorTop(content); content.pivot = new Vector2(0.5f, 1); content.anchoredPosition = Vector2.zero;
             scroll.viewport = viewport; scroll.content = content;
         }
