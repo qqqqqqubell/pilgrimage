@@ -201,7 +201,7 @@ namespace Pilgrimage.Tests
   {
    foreach(var faction in new[]{FactionId.Poverty,FactionId.Gold,FactionId.Discipline,FactionId.Fur}) {
     var g=Game(false,faction); for(int n=1;n<8;n++) NextRound(g); for(int n=0;n<4;n++) g.EndActionTurn(g.ActivePlayerIndex);
-    var receipt=g.RoundRewards.Single(r=>r.PlayerIndex==0); var reward=g.FindCard(receipt.InstanceId).Card;
+    var receipts=g.RoundRewards.Where(r=>r.PlayerIndex==0).ToArray(); Assert.That(receipts.Length,Is.EqualTo(GameSession.FactionRewardCount)); var receipt=receipts[0]; var reward=g.FindCard(receipt.InstanceId).Card;
     Assert.That(reward.Definition.Faction,Is.EqualTo(faction)); Assert.That(receipt.Destination,Is.EqualTo(CardPile.Discard)); g.AcknowledgeRewards();
     for(int n=0;n<15&&!g.Players[0].Hand.Contains(reward);n++) NextRound(g);
     Assert.That(g.Players[0].Hand.Contains(reward),Is.True); Assert.That(g.FindCard(reward.InstanceId).Card,Is.SameAs(reward)); Conserved(g);
@@ -222,7 +222,7 @@ namespace Pilgrimage.Tests
      Assert.That(g.PopulationTotal,Is.EqualTo(120)); Conserved(g,known);
      foreach(var p in g.Players) { Assert.That(p.Faith,Is.InRange(0,100)); Assert.That(p.Doctrine,Is.InRange(0,100)); Assert.That(p.Offering,Is.GreaterThanOrEqualTo(0)); }
     }
-    Assert.That(g.Phase,Is.EqualTo(GamePhase.Finished)); Assert.That(g.RewardHistory.Count,Is.EqualTo(40)); Assert.That(g.Winners,Is.Not.Empty);
+    Assert.That(g.Phase,Is.EqualTo(GamePhase.Finished)); Assert.That(g.RewardHistory.Count,Is.EqualTo(5*4+5*4*GameSession.FactionRewardCount)); // 5 general rounds x4 + 5 faction rounds x4x3 Assert.That(g.Winners,Is.Not.Empty);
     Assert.That(g.Winners.All(i=>g.Players[i].FollowerCount==g.Players.Max(p=>p.FollowerCount)),Is.True);
    }
   }

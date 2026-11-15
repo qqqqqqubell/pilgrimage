@@ -171,7 +171,7 @@ namespace Pilgrimage.Tests
                 Assert.That(a.RewardHistory.Select(r=>r.CardId),Is.EqualTo(b.RewardHistory.Select(r=>r.CardId)));
                 Conserved(a); Conserved(b);
             }
-            Assert.That(a.RewardHistory.Count,Is.EqualTo(40));
+            Assert.That(a.RewardHistory.Count,Is.EqualTo(5*4+5*4*GameSession.FactionRewardCount)); // 5 general rounds x4 + 5 faction rounds x4x3
             Assert.That(a.RewardHistory.All(r=>r.CardId!=CardId.Follower && r.CardId!=CardId.Heretic && r.CardId!=CardId.FaithfulFollower && r.CardId!=CardId.RefusingFollower),Is.True);
         }
         [Test] public void RoundCleanupReshuffleAndUsedCardsKeepEveryPhysicalIdentity()

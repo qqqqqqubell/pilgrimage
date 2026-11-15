@@ -93,7 +93,7 @@ namespace Pilgrimage.Tests
   {
    foreach(var faction in new[]{FactionId.Poverty,FactionId.Gold,FactionId.Discipline,FactionId.Fur}) {
     SelectNewGame(faction); var g=demo.Game; for(int n=1;n<8;n++) AdvanceModelRound(g); for(int n=0;n<4;n++) g.EndActionTurn(g.ActivePlayerIndex);
-    var receipt=g.RoundRewards.Single(r=>r.PlayerIndex==0); var reward=g.FindCard(receipt.InstanceId).Card;
+    var receipts=g.RoundRewards.Where(r=>r.PlayerIndex==0).ToArray(); Assert.That(receipts.Length,Is.EqualTo(GameSession.FactionRewardCount)); var receipt=receipts[0]; var reward=g.FindCard(receipt.InstanceId).Card;
     Assert.That(reward.Definition.Faction,Is.EqualTo(faction)); Assert.That(receipt.CardId!=CardId.RefusingFollower&&receipt.CardId!=CardId.FaithfulFollower,Is.True);
     demo.SendMessage("Refresh"); yield return null;
     Assert.That(demo.GetComponentsInChildren<TMP_Text>().Any(t=>t.name=="Award 0"&&t.text.Contains(reward.Definition.Name)&&t.text.Contains("버린 더미")),Is.True);
@@ -145,7 +145,7 @@ namespace Pilgrimage.Tests
     Assert.That(g.PopulationTotal,Is.EqualTo(120)); Assert.That(g.PopulationIsConserved,Is.True); yield return null;
    }
    Assert.That(g.Phase,Is.EqualTo(GamePhase.Finished),"round "+g.Round+" actor "+g.ActivePlayerIndex);
-   Assert.That(turns,Is.EqualTo(40)); Assert.That(rewards,Is.EqualTo(10)); Assert.That(g.RewardHistory.Count,Is.EqualTo(40)); Assert.That(g.Winners,Is.Not.Empty);
+   Assert.That(turns,Is.EqualTo(40)); Assert.That(rewards,Is.EqualTo(10)); Assert.That(g.RewardHistory.Count,Is.EqualTo(5*4+5*4*GameSession.FactionRewardCount)); Assert.That(g.Winners,Is.Not.Empty);
    float end=Time.realtimeSinceStartup+5; while(demo.IsAiRunning&&Time.realtimeSinceStartup<end) yield return null;
    Assert.That(demo.IsAiRunning,Is.False);
   }

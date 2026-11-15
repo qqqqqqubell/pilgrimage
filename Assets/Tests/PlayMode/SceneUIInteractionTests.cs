@@ -23,7 +23,10 @@ namespace Pilgrimage.Tests
             yield return null;
             Assert.That(title.rectTransform.anchoredPosition,Is.EqualTo(new Vector2(123,456)));
             Assert.That(title.fontSize,Is.EqualTo(29));Assert.That(image.sprite,Is.SameAs(sprite));
-            Assert.That(demo.GetComponentsInChildren<RectTransform>(true).Select(r=>r.GetEntityId()),Is.EquivalentTo(staticIds));
+            // Authored objects all survive Start. The only objects Start may add are the runtime menu skin layers.
+            var after=demo.GetComponentsInChildren<RectTransform>(true).ToArray();
+            Assert.That(staticIds.All(id=>after.Any(r=>r.GetEntityId()==id)),Is.True);
+            Assert.That(after.Where(r=>!staticIds.Contains(r.GetEntityId())).All(r=>r.GetComponentInParent<MenuSkinRoot>(true)!=null),Is.True);
             demo.SelectSinglePlayer();Assert.That(demo.ChooseFaction(FactionId.Poverty),Is.True);
             Assert.That(demo.HandViews.Count,Is.EqualTo(4));
             var cardView=demo.HandViews[0];var visual=(RectTransform)cardView.transform.Find("Card Border");

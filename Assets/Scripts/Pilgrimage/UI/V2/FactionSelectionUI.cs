@@ -30,7 +30,8 @@ namespace Pilgrimage.UI
         public bool ChooseFaction(FactionId faction)
         {
             if (IsLanMode || IsModeSelectionOpen || !IsFactionSelectionOpen || Game != null || !FactionSetup.IsPlayable(faction)) return false;
-            Game = new GameSession(settings != null ? settings.assumptions : null, humanFaction: faction);
+            // A fresh seed per match: the fixed default seed dealt the same hands every game.
+            Game = new GameSession(NewGameRules(), humanFaction: faction);
             Visuals.ResetSession();
             factionSelection.gameObject.SetActive(false);
             targetPlayer = 1;
@@ -43,6 +44,7 @@ namespace Pilgrimage.UI
         {
             Game = null;
             Visuals.ResetSession();
+            HideResultScreen(); resultShownForMatch = false;
             factionSelection.gameObject.SetActive(true);
             factionSelection.SetAsLastSibling();
         }

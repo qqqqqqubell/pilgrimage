@@ -38,7 +38,7 @@ namespace Pilgrimage
         public int Version { get; private set; }
         public int AssignmentSeed { get; private set; }
         // Private host seed: publishing the faction lottery seed must not reveal deck order.
-        public int GameSeed { get; }
+        public int GameSeed { get; private set; }
         public GameSession Game { get; private set; }
         public bool Busy { get; private set; }
         public LanReveal Reveal { get; private set; }
@@ -49,8 +49,7 @@ namespace Pilgrimage
         public LanRoom(ulong host, string name, string hostName, AiSettings ai = null, DemoRuleAssumptions assumptions = null)
         {
             HostConnection = host; Name = LanProtocol.CleanName(name, 48); aiSettings = ai ?? new AiSettings();
-            byte[] entropy=new byte[4]; using(var rng=RandomNumberGenerator.Create())rng.GetBytes(entropy);
-            GameSeed=BitConverter.ToInt32(entropy,0)&int.MaxValue;
+            GameSeed=DemoRuleAssumptions.FreshSeed();
             var source=assumptions??new DemoRuleAssumptions();
             rules=new DemoRuleAssumptions { randomSeed=GameSeed, startingChurchProperty=source.startingChurchProperty,
                 shuffleInitialDeck=source.shuffleInitialDeck, accumulateOfferingBetweenRounds=source.accumulateOfferingBetweenRounds,
@@ -121,6 +120,11 @@ namespace Pilgrimage
                 }
                 return true;
             }
+            if (command.kind == LanCommandKind.Rematch) {
+                if (connection != HostConnection) { reason = "재경기는 호스트만 시작할 수 있습니다."; return false; }
+                if (Phase != LanPhase.Playing || Game == null || Game.Phase != GamePhase.Finished || Busy) { reason = "게임이 끝난 뒤에만 재경기를 시작할 수 있습니다."; return false; }
+                ReturnToLobby(); reason = "로비로 돌아왔습니다. 전원 준비 후 새 게임을 시작합니다."; return true;
+            }
             if (Phase != LanPhase.Playing) { reason = "현재는 게임 요청을 처리할 수 없습니다."; return false; }
             if (Busy) { reason = "카드 공개/처리 중입니다."; return false; }
             if (command.kind == LanCommandKind.Acknowledge && Game.Phase == GamePhase.RewardChoice) {
@@ -138,6 +142,17 @@ namespace Pilgrimage
                 return BeginPlay(member.Seat, source, new EffectTarget { PlayerIndex = command.target, CardInstanceIds = ids.ToArray() }, out reason);
             }
             reason = "지원하지 않는 게임 요청입니다."; return false;
+        }
+        // Host-led rematch: the same members return to the lobby. Every match-scoped value is discarded and a
+        // new private game seed is drawn, so nothing from the finished game leaks into the next one.
+        private void ReturnToLobby()
+        {
+            Game = null; Phase = LanPhase.Lobby; Busy = false; pending = null; Reveal = null;
+            assigned = null; seatNames = null; planners = null; aiTurn = null; aiActor = aiRound = -1;
+            aiSeats.Clear(); acknowledged.Clear(); AssignmentSeed = 0;
+            foreach (var m in members) { m.Ready = false; m.Confirmed = false; m.Seat = -1; }
+            GameSeed = DemoRuleAssumptions.FreshSeed(); rules.randomSeed = GameSeed;
+            Version++;
         }
         // Remote humans the game is currently waiting on: the active actor, or everyone yet to acknowledge rewards.
         public IReadOnlyList<ulong> StalledRemoteHumans()

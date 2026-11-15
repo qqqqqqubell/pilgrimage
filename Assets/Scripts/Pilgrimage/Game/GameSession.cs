@@ -23,6 +23,22 @@ namespace Pilgrimage
         public bool requireFullFollowerTargets = true;
         public bool allowSelfAsOpponentTarget = false;
         public TimedEffectPolicy timedEffects = new TimedEffectPolicy();
+
+        // Same rules with another deck/reward seed. Regular games use FreshSeed so every match deals differently;
+        // tests that construct GameSession directly keep the fixed default seed.
+        public DemoRuleAssumptions WithSeed(int seed)
+        {
+            var copy = (DemoRuleAssumptions)MemberwiseClone();
+            copy.randomSeed = seed;
+            copy.timedEffects = (timedEffects ?? new TimedEffectPolicy()).Copy();
+            return copy;
+        }
+        public static int FreshSeed()
+        {
+            byte[] entropy = new byte[4];
+            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create()) rng.GetBytes(entropy);
+            return BitConverter.ToInt32(entropy, 0) & int.MaxValue;
+        }
     }
 
     public sealed class DeferredReward

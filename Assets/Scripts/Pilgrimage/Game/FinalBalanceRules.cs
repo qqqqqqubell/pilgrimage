@@ -21,6 +21,7 @@ namespace Pilgrimage
     public sealed partial class GameSession
     {
         private readonly Random rewardRandom;
+        public const int FactionRewardCount = 3; // Faction reward rounds hand out three faction cards per order.
         private readonly List<RoundRewardResult> rewardHistory = new List<RoundRewardResult>();
         private readonly List<RoundRewardResult> roundRewards = new List<RoundRewardResult>();
         private readonly HashSet<int> interestUsed = new HashSet<int>();
@@ -67,10 +68,14 @@ namespace Pilgrimage
             {
                 int owner = (FirstPlayerIndex + offset) % PlayerCount;
                 var eligible = EligibleRewards(owner, CurrentRewardKind);
-                var card = new CardInstance(eligible[rewardRandom.Next(eligible.Count)]);
-                Pile(players[owner], rewardDestination).Add(card);
-                var receipt = new RoundRewardResult(Round, owner, card, rewardDestination);
-                roundRewards.Add(receipt); rewardHistory.Add(receipt);
+                int count = CurrentRewardKind == RewardKind.Faction ? FactionRewardCount : 1;
+                for (int n = 0; n < count && eligible.Count > 0; n++)
+                {
+                    var card = new CardInstance(eligible[rewardRandom.Next(eligible.Count)]);
+                    Pile(players[owner], rewardDestination).Add(card);
+                    var receipt = new RoundRewardResult(Round, owner, card, rewardDestination);
+                    roundRewards.Add(receipt); rewardHistory.Add(receipt);
+                }
             }
             Phase = GamePhase.RewardChoice; // Serialized enum compatibility; this is a results acknowledgement now.
             LastMessage = Round + "라운드 종료 · 4개 교단 무작위 카드 획득";

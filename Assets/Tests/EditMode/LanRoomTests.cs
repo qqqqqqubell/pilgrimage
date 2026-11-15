@@ -140,8 +140,27 @@ namespace Pilgrimage.Tests
                     }
                     BalanceTestSupport.Conserved(r.Game,known);
                 }
-                Assert.That(r.Game.Phase,Is.EqualTo(GamePhase.Finished),"humans="+humans);Assert.That(r.Game.Round,Is.EqualTo(40));Assert.That(r.Game.RewardHistory.Count,Is.EqualTo(40));
+                Assert.That(r.Game.Phase,Is.EqualTo(GamePhase.Finished),"humans="+humans);Assert.That(r.Game.Round,Is.EqualTo(40));Assert.That(r.Game.RewardHistory.Count,Is.EqualTo(5*4+5*4*GameSession.FactionRewardCount)); // 5 general rounds x4 + 5 faction rounds x4x3
             }
         }
-    }
+            [Test] public void HostRematchReturnsSameMembersToFreshLobbyAndStartsANewGame()
+        {
+            var r=Start(2);var first=r.Game;int seed=r.GameSeed;
+            for(int guard=0;guard<5000&&first.Phase!=GamePhase.Finished;guard++){if(first.Phase==GamePhase.RewardChoice)first.AcknowledgeRewards();else first.EndActionTurn(first.ActivePlayerIndex);}
+            Assert.That(first.Phase,Is.EqualTo(GamePhase.Finished));
+            Assert.That(Send(r,1,LanCommandKind.Rematch,out _),Is.False);Assert.That(r.Phase,Is.EqualTo(LanPhase.Playing));
+            Assert.That(Send(r,0,LanCommandKind.Rematch,out _),Is.True);
+            Assert.That(r.Phase,Is.EqualTo(LanPhase.Lobby));Assert.That(r.Game,Is.Null);Assert.That(r.Busy,Is.False);Assert.That(r.Reveal,Is.Null);
+            Assert.That(r.Members.Count,Is.EqualTo(2));Assert.That(r.Members.All(m=>!m.Ready&&!m.Confirmed&&m.Seat==-1),Is.True);
+            Assert.That(r.Assignment.Count,Is.Zero);Assert.That(r.GameSeed,Is.Not.EqualTo(seed));Assert.That(r.ViewFor(0),Is.Null);
+            Assert.That(Send(r,0,LanCommandKind.Prepare,out _),Is.False);
+            for(ulong i=0;i<2;i++)Assert.That(Send(r,i,LanCommandKind.Ready,out _),Is.True);
+            Assert.That(Send(r,0,LanCommandKind.Prepare,out _),Is.True);int version=r.Version;
+            for(ulong i=0;i<2;i++)Assert.That(Send(r,i,LanCommandKind.ConfirmAssignment,out _,version:version),Is.True);
+            Assert.That(r.Phase,Is.EqualTo(LanPhase.Playing));Assert.That(r.Game,Is.Not.SameAs(first));
+            Assert.That(r.Game.Round,Is.EqualTo(1));Assert.That(r.Game.Phase,Is.EqualTo(GamePhase.Actions));
+            Assert.That(!r.IsAi(0)&&!r.IsAi(1)&&r.IsAi(2)&&r.IsAi(3),Is.True);
+            Assert.That(Send(r,0,LanCommandKind.Rematch,out _),Is.False);
+        }
+}
 }

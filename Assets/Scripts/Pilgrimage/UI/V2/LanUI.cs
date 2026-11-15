@@ -77,6 +77,7 @@ namespace Pilgrimage.UI
             if (labEntryButton != null) labEntryButton.gameObject.SetActive(false);
             lanScreen.gameObject.SetActive(true); lanScreen.SetAsLastSibling();
             lanStatus.text = "같은 PC 테스트: 127.0.0.1 · 다른 PC: 호스트의 LAN IPv4";
+            RenderLanIdle();
         }
         private void StartLan(bool host)
         {
@@ -122,16 +123,12 @@ namespace Pilgrimage.UI
         private void ReturnFromLan(string reason)
         {
             if (Network != null) { Network.Changed -= OnLanChanged; Network.Closed -= ReturnFromLan; Destroy(Network); Network = null; }
-            StopAllCoroutines(); IsAnimating = IsAiRunning = false; firewallBusy = false; SetEndLabel("행동 종료");
-            Visuals.ResetSession();
-            lanPresentations.Clear();lanResolved.Clear();lanPresentationRoutine=null;
-            Game = null; LanView = null; IsLanMode = false; LanError = reason; SelectedCardId = null; displayedReveal = 0;
-            CloseCardPicker(); CloseDetail(); CloseLabPanel(); rewardRoot.gameObject.SetActive(false); revealedCard.gameObject.SetActive(false);
-            RevealedCardInstanceId = null; RevealedAiCard = null;
-            ClearChildren(handRoot); handViews.Clear(); leaveLanButton.gameObject.SetActive(false); kickStalledButton.gameObject.SetActive(false); kickConfirmUntil = 0;
-            lanScreen.gameObject.SetActive(false); factionSelection.gameObject.SetActive(false); modeScreen.gameObject.SetActive(true); modeScreen.SetAsLastSibling();
-            modeScreen.Find("Menu Feedback").GetComponent<TMP_Text>().text = reason;
+            // Session and network are gone; clear every match-scoped coroutine, queue and overlay.
+            ResetGameplayPresentation(); lanInGame = false;
+            Game = null; LanView = null; IsLanMode = false; LanError = reason; displayedReveal = 0;
+            leaveLanButton.gameObject.SetActive(false);
             foreach(var input in new[]{lanName,lanRoomName,lanAddress,lanPort}) input.interactable=true;
+            ShowMainMenu(reason);
         }
         private void OnLanChanged(LanEnvelope envelope)
         {
@@ -140,6 +137,7 @@ namespace Pilgrimage.UI
             if(!isActiveAndEnabled)return;
             if (!string.IsNullOrEmpty(envelope.error)) { LanError = envelope.error; Feedback(envelope.error); }
             if (envelope.lobby.phase == LanPhase.Playing && LanView != null) {
+                lanInGame = true;
                 lanScreen.gameObject.SetActive(false); leaveLanButton.gameObject.SetActive(true);
                 if (targetPlayer == LocalSeat) targetPlayer = (LocalSeat + 1) % 4;
                 RefreshLanGame();
@@ -153,35 +151,20 @@ namespace Pilgrimage.UI
                 Visuals.TimeScale=LanView.reveal!=null&&LanView.reveal.resultSeconds>0?LanView.reveal.resultSeconds/.8f:VisualScale;
                 Visuals.Submit(LanView.events);
                 if (!string.IsNullOrEmpty(envelope.error)) Feedback(envelope.error);
-            } else RenderLobby(envelope.lobby, envelope.error);
+            } else {
+                // Host-led rematch (or a game that never started): drop the finished match, then show the lobby.
+                if (lanInGame) ResetLanMatchPresentation();
+                RenderLobby(envelope.lobby, envelope.error);
+            }
         }
         private void RenderLobby(LanLobbyView lobby, string error)
         {
-            ClearChildren(lobbyContent); lanScreen.gameObject.SetActive(true); lanScreen.SetAsLastSibling();
+            lanScreen.gameObject.SetActive(true); lanScreen.SetAsLastSibling();
+            if (Network == null) { RenderLanIdle(); return; }
             string endpoint = Network.Address + ":" + Network.Port;
             lanStatus.text = lobby.room + "  ·  " + endpoint + "\n인간 " + lobby.members.Length + "/4 · AI " + (4-lobby.members.Length) + (string.IsNullOrEmpty(error) ? "" : "\n"+error);
-            if (lobby.host && firewallState != LanFirewallState.Unsupported) {
-                lanStatus.text += "\n" + LanFirewall.Describe(firewallState, firewallPort);
-                if (firewallState != LanFirewallState.Ready) Button(lobbyContent,"방화벽 다시 설정",new Vector2(640,-215),new Vector2(360,50),()=>StartCoroutine(RetryFirewall()));
-            }
-            bool assignment = lobby.phase == LanPhase.Assignment;
-            for (int i=0;i<4;i++) {
-                var member = i<lobby.members.Length ? lobby.members[i] : null;
-                string state = member == null ? "AI 빈자리" : member.name + (member.connection==lobby.localConnection ? " (나)" : "") + " · " + (assignment ? member.confirmed ? "확인 완료" : "확인 대기" : member.ready ? "준비 완료" : "준비 중");
-                string faction = assignment ? FactionSetup.Name(lobby.assignment[i]) : member==null ? "시작 시 배정" : FactionSetup.Name(member.desired);
-                Text(lobbyContent,"Lobby Seat "+i,state+"\n"+faction,new Vector2(-600+i*400,100),new Vector2(385,120),23);
-                if (lobby.host && member != null && member.connection != lobby.localConnection && ulong.TryParse(member.connection, out ulong kicked))
-                    Button(lobbyContent,"내보내기 "+i,new Vector2(-600+i*400,195),new Vector2(180,40),()=>Network.Kick(kicked));
-            }
-            if (assignment) {
-                Text(lobbyContent,"Assignment Seed","최종 교단 배정 · 시드 "+lobby.seed+"\n모두 확인하면 게임을 시작합니다.",new Vector2(0,-50),new Vector2(1500,85),25);
-                Button(lobbyContent,"배정 확인",new Vector2(0,-180),new Vector2(400,60),()=>Network.Send(new LanCommand {kind=LanCommandKind.ConfirmAssignment}));
-            } else {
-                for(int i=0;i<4;i++) { var f=(FactionId)(i+1); Button(lobbyContent,FactionSetup.Name(f),new Vector2(-600+i*400,-45),new Vector2(380,60),()=>Network.Send(new LanCommand {kind=LanCommandKind.Faction,faction=f})); }
-                var mine=lobby.members.First(m=>m.connection==lobby.localConnection);
-                Button(lobbyContent,mine.ready ? "준비 취소" : "준비",new Vector2(-240,-160),new Vector2(360,60),()=>Network.Send(new LanCommand {kind=LanCommandKind.Ready,ready=!mine.ready}));
-                if(lobby.host) { var start=Button(lobbyContent,"게임 시작 · 배정",new Vector2(240,-160),new Vector2(400,60),()=>Network.Send(new LanCommand {kind=LanCommandKind.Prepare})); start.interactable=lobby.members.Length>=2&&lobby.members.All(m=>m.ready); }
-            }
+            if (lobby.host && firewallState != LanFirewallState.Unsupported) lanStatus.text += "\n" + LanFirewall.Describe(firewallState, firewallPort);
+            RenderLobbySkin(lobby, error);
             foreach(var input in new[]{lanName,lanRoomName,lanAddress,lanPort}) input.interactable=false;
         }
         private int SeatAt(int relative) => (LocalSeat+relative)%4;
@@ -231,7 +214,8 @@ namespace Pilgrimage.UI
             ClearChildren(rewardRoot);rewardRoot.gameObject.SetActive(LanView.phase==GamePhase.RewardChoice);
             if(!rewardRoot.gameObject.activeSelf)return;rewardRoot.SetAsLastSibling();
             Text(rewardRoot,"Reward Title",LanView.round+"라운드 · 무작위 카드 획득 결과",new Vector2(0,210),new Vector2(1070,55),25);
-            for(int i=0;i<LanView.rewards.Length;i++) {var r=LanView.rewards[i];Text(rewardRoot,"Award "+i,LanView.players[r.owner].name+" · "+CardCatalog.Get(r.id).Name+" → "+PileName(r.destination),new Vector2(0,125-i*75),new Vector2(1050,60),24);}
+            var awards=LanView.rewards.GroupBy(r=>r.owner).ToArray();
+            for(int i=0;i<awards.Length;i++) {var a=awards[i];Text(rewardRoot,"Award "+i,LanView.players[a.Key].name+" · "+string.Join(", ",a.Select(r=>CardCatalog.Get(r.id).Name))+" → "+PileName(a.First().destination),new Vector2(0,125-i*75),new Vector2(1050,60),24);}
             var button=Button(rewardRoot,LanView.acknowledged?"다른 참가자 확인 대기":"획득 확인 · 계속",new Vector2(0,-190),new Vector2(500,55),()=>Network.Send(new LanCommand{kind=LanCommandKind.Acknowledge})); button.interactable=!LanView.acknowledged&&!Network.Pending;
         }
         // A disabled button gives no feedback, so the label says who the game is waiting on.

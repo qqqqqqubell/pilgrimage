@@ -7,7 +7,7 @@ using System.Text;
 namespace Pilgrimage
 {
     public enum LanPhase { Lobby, Assignment, Playing, Closed }
-    public enum LanCommandKind { Faction, Ready, Prepare, ConfirmAssignment, Play, EndTurn, Acknowledge, Debug }
+    public enum LanCommandKind { Faction, Ready, Prepare, ConfirmAssignment, Play, EndTurn, Acknowledge, Debug, Rematch }
 
     [Serializable] public sealed class LanCommand
     {
@@ -113,7 +113,7 @@ namespace Pilgrimage
         public static string Fingerprint
         {
             get {
-                var rules = "pilgrimage-lan-v2-visual-events|2026-11-15-final|40,4,5,3,4,2|" + string.Join("|", CardCatalog.All.OrderBy(c => c.Id)
+                var rules = "pilgrimage-lan-v2-visual-events|2026-11-15-rematch|40,4,5,3,4,2,f3|" + string.Join("|", CardCatalog.All.OrderBy(c => c.Id)
                     .Select(c => (int)c.Id + ":" + c.Name + ":" + c.CostKind + ":" + c.Cost + ":" + c.Faction + ":" + c.Target + ":" + c.Implementation + ":" + c.Description + ":" + c.EffectKey));
                 using (var hash = SHA256.Create()) return BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(rules))).Replace("-", "");
             }

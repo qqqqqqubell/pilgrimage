@@ -60,6 +60,7 @@ namespace Pilgrimage.UI
             if (root == null) { Debug.LogError("Pilgrimage: authored scene UI is missing. Open PilgrimageDemo or SampleScene.", this); enabled = false; return; }
             BindSceneUI();
             BuildGameplayVisuals();
+            BuildMenuSkin();
             var cover = root.GetComponentInChildren<CoverScreen>(true);
             if (cover != null) cover.Initialize(modeScreen.gameObject);
         }
@@ -198,6 +199,8 @@ namespace Pilgrimage.UI
 
         private void Update()
         {
+            UpdateMenuSkin();
+            if (IsResultOpen) return;
             if (IsLanMode) { UpdateLanInput(); return; }
             if (Game == null || IsAnimating || IsAiRunning) return;
             if (IsLabPanelOpen || IsCardPickerOpen)
@@ -395,12 +398,13 @@ namespace Pilgrimage.UI
             if (!rewardRoot.gameObject.activeSelf) return;
             rewardRoot.SetAsLastSibling();
             Text(rewardRoot, "Reward Title", $"{Game.Round}라운드 · 무작위 카드 획득 결과", new Vector2(0, 210), new Vector2(1070, 55), 25);
-            for (int i = 0; i < Game.RoundRewards.Count; i++)
+            // Faction reward rounds give several cards per order: one line per order keeps the authored four slots.
+            var awards = Game.RoundRewards.GroupBy(r => r.PlayerIndex).ToArray();
+            for (int i = 0; i < awards.Length; i++)
             {
-                var receipt = Game.RoundRewards[i];
-                string pile = receipt.Destination == CardPile.Discard ? "버린 더미" : receipt.Destination == CardPile.Deck ? "덱" : receipt.Destination == CardPile.Hand ? "손패" : "제거 더미";
-                Text(rewardRoot, "Award " + receipt.PlayerIndex,
-                    Game.Players[receipt.PlayerIndex].Name + "  ·  " + CardCatalog.Get(receipt.CardId).Name + "  →  " + pile,
+                var award = awards[i];
+                Text(rewardRoot, "Award " + award.Key,
+                    Game.Players[award.Key].Name + "  ·  " + string.Join(", ", award.Select(r => CardCatalog.Get(r.CardId).Name)) + "  →  " + PileName(award.First().Destination),
                     new Vector2(0, 125 - i * 75), new Vector2(1050, 60), 24);
             }
             Button(rewardRoot, "획득 확인 · 계속", new Vector2(0, -190), new Vector2(500, 55), () => {
@@ -568,6 +572,7 @@ namespace Pilgrimage.UI
         private void OnDestroy()
         {
             if (Network != null) Network.Shutdown();
+            DestroyMenuSkinAssets();
             if (ownedEventSystem != null) Destroy(ownedEventSystem);
             if (ownsFont && font != null)
             {
